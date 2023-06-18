@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+
+import sys
+import time
+import board
+import digitalio
+
+USAGE = """wg-arduino-enter-bootloader [arduino code letter]
+arduino code letter is
+a   for atlas
+c   for client
+g   for green
+l   for light
+r   for rain
+w   for wmod
+"""
+
+RESET_PIN_ATLAS  = board.D21
+RESET_PIN_CLIENT = board.D21
+RESET_PIN_GREEN  = board.D24
+RESET_PIN_LIGHT  = board.D20
+RESET_PIN_RAIN   = board.D16
+RESET_PIN_WMOD   = board.D20
+
+def main():
+    if len(sys.argv) != 2:
+        print(USAGE)
+        sys.exit(1)
+    arduino_code_letter = sys.argv[1]
+    if arduino_code_letter == 'a':
+        reset_pin = digitalio.DigitalInOut(RESET_PIN_ATLAS)
+    elif arduino_code_letter == 'c':
+        reset_pin = digitalio.DigitalInOut(RESET_PIN_CLIENT)
+    elif arduino_code_letter == 'g':
+        reset_pin = digitalio.DigitalInOut(RESET_PIN_GREEN)
+    elif arduino_code_letter == 'l':
+        reset_pin = digitalio.DigitalInOut(RESET_PIN_LIGHT)
+    elif arduino_code_letter == 'r':
+        reset_pin = digitalio.DigitalInOut(RESET_PIN_RAIN)
+    elif arduino_code_letter == 'w':
+        reset_pin = digitalio.DigitalInOut(RESET_PIN_WMOD)
+    else:
+        print(USAGE)
+        sys.exit(1)
+    reset_pin.direction = digitalio.Direction.OUTPUT
+    # this is for INPUT pins
+    # reset_pin.pull = digitalio.Pull.UP
+    reset_pin.value = True
+    reset_pin.value = False
+    time.sleep(0.1)
+    reset_pin.value = True
+    time.sleep(0.1)
+    reset_pin.value = False
+    time.sleep(0.1)
+    reset_pin.value = True
+
+
+if __name__ == '__main__':
+    main()
+
+# eee eof

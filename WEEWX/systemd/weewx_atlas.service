@@ -1,0 +1,18 @@
+# systemd configuration for weewx
+
+[Unit]
+Description=weewx_atlas weather system
+Requires=time-sync.target
+After=time-sync.target
+RequiresMountsFor=/home
+
+[Service]
+ExecStart=/usr/bin/weewxd_atlas --config=/etc/weewx/weewx_atlas.conf --daemon --pidfile=/run/weewx_atlas.pid --log-label=weewx_atlas
+ExecReload=/bin/kill -HUP $MAINPID
+Type=forking
+PIDFile=/run/weewx_atlas.pid
+#User=weewx
+#Group=weewx
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,43 @@
+#!/bin/bash
+
+DESKTOP_HOST=electron.localdomain
+ROOT_HOME="/root"
+ARDUINO_HOME="${USER_HOME}/Arduino"
+HTML_HOME="/var/www/html/WEEWXS"
+USER="garberw"
+
+
+
+LN="/bin/ln -sf"
+PROMPT="**********"
+
+function check_err() {
+    res=$1
+    echo "res=$res"
+    if [[ $res -ne 0 ]]
+    then
+	echo "ERROR exit 1"
+	exit 1
+    fi
+}
+
+function checkhost() {
+    CORRECT_HOST="$1"
+    if [[ `hostname` != "$CORRECT_HOST" ]]
+    then
+	echo "error:  %0    must run on $CORRECT_HOST only; exit 1;"
+	exit 1
+    fi
+}
+
+function checkroot() {
+    uid=$(id -u)
+
+    if [[ $uid -ne 0 ]]
+    then
+        echo "error; must be run as root or with sudo; exit 1;"
+        exit 1
+    fi
+}
+
+# eee eof

@@ -1,0 +1,40 @@
+# systemd configuration for weewx
+
+[Unit]
+Description=weatherg weather system
+After=syslog.target
+
+[Service]
+ExecStart=/usr/bin/weatherg
+ExecReload=/bin/kill -HUP $MAINPID
+Type=simple
+PIDFile=/run/weatherg.pid
+# User=weatherg
+# Group=weatherg
+# User=garberw
+# Group=garberw
+#
+# remove next two lines for debugging
+# 0 = emergency
+# 1 = alert
+# 2 = critical
+# 3 = error
+# 4 = warning
+# 5 = notice
+# 6 = info and debug
+LogLevelMax=4
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target
+
+
+# not used ...........
+# [Unit]
+# Requires=time-sync.target
+# After=time-sync.target
+# RequiresMountsFor=/home
+# [Service]
+# Type=forking
+# ExecStart=/usr/bin/weatherg --daemon --pidfile=/run/weatherg.pid --log-label=weatherg

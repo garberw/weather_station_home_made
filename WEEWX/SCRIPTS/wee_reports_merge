@@ -1,0 +1,14 @@
+#!/bin/sh
+app=wee_reports
+
+# Get the weewx location and interpreter.  Default to something sane, but
+# look for overrides from the system defaults.
+WEEWX_BINDIR=/home/weewx/bin
+WEEWX_PYTHON=python3
+[ -r /etc/default/weewx_merge ] && . /etc/default/weewx_merge
+
+# sqlite3 /var/lib/weewx/weewx_atlas.sdb ".backup '/var/lib/weewx/weewx_atlas.tmp.sdb'"
+# sqlite3 /var/lib/weewx/weewx_wmod.sdb  ".backup '/var/lib/weewx/weewx_wmod.tmp.sdb'"
+# sqlite3 /var/lib/weewx/weewx_green.sdb ".backup '/var/lib/weewx/weewx_green.tmp.sdb'"
+
+exec "$WEEWX_PYTHON" $WEEWX_PYTHON_ARGS "$WEEWX_BINDIR/$app" --config=$WEEWX_CFG "$@"

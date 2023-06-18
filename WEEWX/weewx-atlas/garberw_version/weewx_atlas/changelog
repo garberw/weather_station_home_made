@@ -1,0 +1,11 @@
+
+0.7 27apr2023
+* improved process management
+* report errors better during startup
+* use new mapping syntax output=input
+* added comments about how to configure
+* options to log unparsed packets
+* options to log unmapped data from parsed packets
+
+0.1 26apr2023
+* initial release

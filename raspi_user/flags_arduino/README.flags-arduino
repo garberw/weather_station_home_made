@@ -1,0 +1,19 @@
+
+the "platform.local.txt" file contains new user specified libraries to be linked with
+your arduino programs; this is the standard arduino method for addding new *.a library archives
+to your link;
+the only one we use is Bosch bme688 BSEC which is closed source
+(it is a binary blob with no source code publicly available);
+we have to use "platform.local.txt" because it is closed source;
+
+/home/garberw/.arduino15/packages/adafruit/hardware/samd/1.7.11/platform.local.txt
+
+install.sh copies it from here to there;
+
+this is the Bosch bme688 BSEC library to be linked as specified in "platform.local.txt";
+
+/home/garberw/Arduino/libraries/BSEC_Software_Library/src/cortex-m4/fpv4-sp-d16-hard/libalgobsec.a
+
+(search ~/Arduino/libraries for libalgobsec.a);
+
+# eee eof

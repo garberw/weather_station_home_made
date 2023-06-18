@@ -1,0 +1,55 @@
+# source this file in .bashrc
+
+# User specific aliases and functions
+
+# change this to your home directory ~
+USER_HOME="/home/garberw"
+WEATHER_HOME="${USER_HOME}/git/weather_station_home_made"
+
+PATH=$PATH:${USER_HOME}/bin
+PYTHONDIR=${USER_HOME}/PythonRoot
+
+set -o ignoreeof       # do not allow single C-d to log off
+set -o noclobber       # do not allow redirection to overwrite existing file
+# set -o nounset        # error when using undefined variable
+
+
+alias rm='rm -i'
+alias cp='cp -i'
+alias mv='mv -i'
+
+alias diffq='diff -qr --no-dereference '
+
+#alias em='emacs -nw'
+alias em='${USER_HOME}/bin/wg-emacs-text.sh'
+alias eg='${USER_HOME}/bin/wg-emacs-gui.sh'
+
+#alias acroread='/usr/bin/acroread -geometry 1920x1080+0+0'
+#alias acroread='atril'
+#alias acroread='evince'
+alias acroread='okular'
+#alias acroread='${USER_HOME}/bin/wg-atril.sh'
+#alias acroread='${USER_HOME}/bin/wg-okular.sh'
+#alias acroread='${USER_HOME}/bin/wg-acroread.sh'
+
+alias _gs='git status '
+alias _ga='git add '
+alias _gb='git branch '
+alias _gc='git commit'
+alias _gd='git diff'
+alias _gco='git checkout '
+alias _gk='gitk --all&'
+alias _gx='gitx --all'
+
+# alias aaaa='cd ${USER_HOME}/Arduino'
+# alias aaaae='cd ${USER_HOME}/Arduino; em'
+alias aaaa='cd ${WEATHER_HOME}/Arduino'
+alias aaaae='cd ${WEATHER_HOME}/Arduino; em'
+alias gggg='cd ${WEATHER_HOME}'
+alias gggge='cd ${WEATHER_HOME}; em'
+
+
+source ${USER_HOME}/bin/ALIAS-ARDUINO
+
+# eee eof
+

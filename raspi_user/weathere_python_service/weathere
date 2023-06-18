@@ -1,0 +1,898 @@
+#!/usr/bin/env python3
+"""
+# SPDX-FileCopyrightText: 2023 William Garber
+# SPDX-License-Identifier: MIT
+"""
+import os
+import signal
+import argparse
+import time
+import shutil
+import sys
+import struct
+import json
+import logging
+import logging.handlers
+import pathlib
+
+import serial
+import serial.rs485
+import RPi.GPIO as GPIO
+import board
+import adafruit_ahtx0
+import adafruit_ltr390
+import adafruit_tsl2591
+
+log = logging.getLogger(__name__)
+
+SERVICE_VERSION = 0.01
+DEFAULT_DEBUG = False # tofix
+
+BAUD = 9600
+FRAME_MAX = 128
+TARGET_ADDRESS = 2
+DEBUG_CLIENT_TX_RX = False
+DEBUG_GET_DAT = False
+BOUNCETIME = 300   # milliseconds
+RAIN_PIN = 25
+BUCKET_TIPS_RESET = 10000
+TIMEOUT_READ_TEMP = 50   # was 320
+TIMEOUT_READ_WIND = 50    # was 75
+FNAME_STAGE = '/tmp/weathere_stage.dat'
+FNAME_FINAL = '/tmp/weathere_final.dat'
+FRAME_NUMBER_DATA_ITEMS = 19
+MAIN_LOOP_SLEEP = 5  # seconds
+PIDFILE = '/var/run/weathere.pid'
+SYSTEM_TEMP_FILE = '/sys/class/thermal/thermal_zone0/temp'
+
+CONVERT_MPS_TO_MPH = 2.23694
+CONVERT_C_TO_F = 9.0 / 5.0
+CONVERT_PA_TO_IN_HG = 0.000295333727
+CONVERT_M_TO_FT = 3.28084
+
+# inches to trip tipping bucket Abhijit Borah measurement
+RAIN_HEIGHT_PER_BUCKET_TIP_INCH_AB = (0.01610595)
+# millimeters to trip tipping bucket Abhijit Borah measurement
+RAIN_HEIGHT_PER_BUCKET_TIP_MM_AB = (0.40909113)
+
+# milimeters to trip tipping bucket William Garber measurement
+# measured area A = 108.5(+/-)0.5mm x 48.5(+/-)0.5mm - pi * r * r where r = 5mm;
+# A = 51.8371(+/-)0.005 cm^2;
+# measured N = 257 bucket tips with volume V = 500(+/-)5 mL;
+# (rain h in mm) = RAIN_HEIGHT_PER_BUCKET_TIP_MM * bucket_tips;
+# RAIN_HEIGHT_PER_BUCKET_TIP_MM error +/- 0.004 mm;
+RAIN_HEIGHT_PER_BUCKET_TIP_MM_WG = (0.375315)
+# (rain h in inch) = RAIN_HEIGHT_PER_BUCKET_TIP_INCH * bucket_tips;
+# RAIN_HEIGHT_PER_BUCKET_TIP_INCH error +/-0.00016;
+RAIN_HEIGHT_PER_BUCKET_TIP_INCH_WG = (0.014776181)
+
+
+class BadRead(Exception):
+    """file read failed"""
+
+
+class BadWrite(Exception):
+    """file write failed"""
+
+
+def celsius_to_fahrenheit(temp_c):
+    """convert units"""
+    temp_f = temp_c * 1.8 + 32.0
+    return temp_f
+
+
+def delay_microseconds(n_usec):
+    """stub"""
+    time.sleep(n_usec / 1000000)
+
+
+def delay_milliseconds(n_msec):
+    """stub"""
+    time.sleep(n_msec / 1000)
+
+
+def display_buf(msg, bbbb):
+    """display hex data in bbbb buffer"""
+    out = msg
+    for ccc in bbbb:
+        out += f' 0x{ccc:02x}'
+        # out += f' {ccc:03d}'
+    log.debug(out)
+    # out = msg
+    # for ccc in bbbb:
+    #     ddd = 0xff ^ ccc
+    #     out += f' 0x{ddd:02x}'
+    # log.debug(out) # tofix check
+
+
+def halt():
+    """stub"""
+    log.error('halting')
+    # log.error('flushing buffers')
+    sys.exit(0)
+
+
+def calc_crc(bbbb):
+    """
+    modbus CRC algorithm;
+    assume last two bytes are checksum;
+    return 0 if last two bytes are correct checksum for rest of data else return 1;
+
+    omit the last 2 CRC bytes in the calculation. final = len - 2.
+    Compute the MODBUS RTU CRC of bbbb[0:final] (final bytes).
+    checksum bbbb      = (measured_high,measured_low)
+                       = bbbb[len:len+2].
+                       (bbbb = m for measured).
+    checksum calculated = (calculated_high,calculated_low).
+    """
+    final = len(bbbb) - 2
+    if final < 1:
+        log.error('error; final too small.  final = %d', final)
+    crc = 0xFFFF
+    for pos in range(0, final):
+        crc ^= bbbb[pos]  # XOR byte into least sig. byte of crc
+        for _ in range(8,0,-1):       # Loop over each bit
+            if (crc & 0x0001) != 0:     # If the LSB is set
+                crc >>= 1           # Shift right and XOR 0xA001
+                crc ^= 0xA001
+            else:                       # Else LSB is not set
+                crc >>= 1               # Just shift right
+                # crc has low and high bytes swapped
+    measured_high_low   = (bbbb[final] << 8) | bbbb[final + 1]
+    calculated_high_low = ((crc & 0xFF) << 8) | (crc >> 8)
+    if calculated_high_low != measured_high_low:
+        log.error('crc error')
+        log.error('calculated_high_low=0x%04x', calculated_high_low)
+        log.error('measured_high_low  =0x%04x', measured_high_low)
+        display_buf('checksum bbbb', bbbb)
+        return -1
+    return 0
+
+
+def write_pid_file():
+    """stub; not used anymore;"""
+    try:
+        pid = os.getpid()
+        with open(PIDFILE) as fptr:
+            fptr.write(pid)
+    except OSError as exc:
+        log.error('error:  fail to write %s', PIDFILE)
+        log.error('exc = %s', str(exc))
+        halt()
+
+
+class Weathere:
+    """green weather station; outdoors raspberry pi zero2w weatherg; service weathere;"""
+    # [ 0x01, 0x03, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x0B ]
+    # [ 0x02, 0x03, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x38 ]
+    # [ 0x03, 0x03, 0x00, 0x00, 0x00, 0x02, 0xC5, 0xE9 ]
+    # [ 0x04, 0x03, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x5E ]
+    # 2 readings (temp)(humidity).  2 bytes each.  4 effective bytes.
+    temp_data_request          = [ 0x02, 0x03, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x38 ]
+    temp_data_reply            = [ 0x02, 0x03, 0x04, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF ]
+    temp_addr_request          = [ 0xFA, 0x03, 0x00, 0x64, 0x00, 0x02, 0x90, 0x5F ]
+    temp_addr_reply            = [ 0x01, 0x03, 0x02, 0x55, 0x3C, 0x00, 0x01, 0x3A, 0x79 ]
+    temp_addr_set_request      = [ 0x01, 0x06, 0x00, 0x66, 0x00, 0x02, 0xE8, 0x14 ]
+    temp_addr_set_reply        = [ 0x01, 0x06, 0x00, 0x66, 0x00, 0x02, 0xE8, 0x27 ]
+    # temp_baud_request        = [ 0x01, 0x03, 0x07, 0xD1, 0x00, 0x01, 0xD5, 0x47 ]
+    # temp_baud_reply_4800     = [ 0x01, 0x03, 0x02, 0x00, 0x01, 0x79, 0x84 ]  # 1 == 4800
+    # temp_baud_reply_9600     = [ 0x01, 0x03, 0x02, 0x00, 0x02, 0x39, 0x85 ]  # 2 == 9600
+    # temp_baud_reply          = [temp_baud_reply_max]
+    # temp_baud_request_set_4800 = [ 0x01, 0x06, 0x07, 0xD1, 0x00, 0x01, 0x19, 0x47 ]  # 1 == 4800
+    # temp_baud_reply_set_4800   = [ 0x01, 0x06, 0x02, 0x00, 0x01, 0x79, 0x48 ]
+    # temp_baud_request_set_9600 = [ 0x01, 0x06, 0x07, 0xD1, 0x00, 0x02, 0x59, 0x46 ]  # 2 == 9600
+    # temp_baud_reply_set_9600   = [ 0x01, 0x06, 0x02, 0x00, 0x02, 0x39, 0x49 ]
+    wind_data_request          = [ 0x01, 0x03, 0x00, 0x00, 0x00, 0x04, 0x44, 0x09 ]
+    wind_data_reply            = [ 0x01, 0x03, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                   0x00, 0x00, 0xFF, 0xFF ]
+    def __init__(self):
+        """
+        initialize data members;
+        set up rs485 serial port;
+        set up i2c devices;
+        """
+        self.input_frame = [ 0x00 ] * FRAME_MAX
+        self.rain_bucket_tips      = 0
+        self.rain_bucket_tips_prev = 0
+        # rain not reset
+        self.rain_reset            = True
+        self.t15_usec              = None
+        self.t35_usec              = None
+        self.aht20_temperature     = None
+        self.aht20_humidity        = None
+        self.ltr390_uvs            = None
+        self.ltr390_light          = None
+        self.ltr390_uvi            = None
+        self.ltr390_lux            = None
+        self.tsl2591_lux           = None
+        self.tsl2591_infrared      = None
+        self.tsl2591_visible       = None
+        self.tsl2591_full_spectrum = None
+        self.sht30_temperature     = None
+        self.sht30_humidity        = None
+        self.wind_speed            = None
+        self.wind_speed_max        = None
+        self.wind_direction        = None
+        self.wind_rating           = None
+        self.system_temperature    = None
+        # write_pid_file()
+        self._setup_rs485()
+        self._setup_i2c()
+        # self._setup_temp()
+        # self._setup_wind()
+        self._setup_rain()
+        self._setup_aht20()
+        self._setup_ltr390()
+        self._setup_tsl2591()
+        # self._setup_system_temp()
+
+    def __del__(self):
+        """GPIO cleanup for rain"""
+        GPIO.cleanup()
+
+    def _setup_rs485(self):
+        """open serial port /dev/serial0"""
+        log.debug('_setup_rs485')
+        self.crc_debug()
+        self.calc_timeout()
+        # self.serial = serial.Serial(
+        self.serial = serial.rs485.RS485(
+            port = '/dev/serial0',
+            baudrate = 9600,
+            bytesize = serial.EIGHTBITS,
+            parity = serial.PARITY_NONE,
+            stopbits = serial.STOPBITS_ONE,
+            timeout = None,
+            xonxoff = False,
+            rtscts = False,
+            write_timeout = None,
+            dsrdtr = False,
+            inter_byte_timeout = None,
+            exclusive = None,
+        )
+        # self.serial = serial.Serial('/dev/serial0', 9600)
+        log.debug('portstr = %s', self.serial.portstr)
+        # loopback        = when set to True transmitted data is also received
+        # delay_before_tx = delay after setting RTS but before transm starts (sec as float)
+        # delay_before_rx = delay after transmission ends and resetting RTS (sec as float)
+        self.serial.rs485_mode = serial.rs485.RS485Settings(
+            rts_level_for_tx = True, # check
+            rts_level_for_rx = False,  # check
+            loopback         = False,
+            delay_before_tx  = None,   # tofix should be None
+            delay_before_rx  = None,   # tofix should be None
+        )
+        return 0
+
+    def _setup_i2c(self):
+        """setup i2c default method for Adafruit sensors"""
+        self.i2c = board.I2C()  # uses board.SCL and board.SDA
+        # valid I2C ports: ((1, 3, 2), (0, 1, 0)) i.e.:
+        # (scl, sda) =
+        # (  1,   0)
+        # (  3,   1)
+        # (  2,   0)
+        #       3.3V pin 1 / pin 2 5V
+        # sda gpio 2 pin 3 / pin 4 5V
+        # scl gpio 3 pin 5 / pin 6 GND
+        # ----------------------------
+        # GPIO 0 = pin 27
+        # GPIO 1 = pin 28
+        # GPIO 2 = pin 3 = sda normally
+        # GPIO 3 = pin 5 = scl normally
+        # ----------------------------
+        # so you want
+        # (pin 28, pin 27) = (GPIO 1, GPIO 0)
+        # scl = 1 # GPIO 1
+        # sda = 0 # GPIO 0
+        # self.i2c = busio.I2C(scl, sda)
+        return 0
+
+    # def _setup_temp(self):
+    #     """stub"""
+    #     return 0
+
+    # def _setup_wind(self):
+    #     """stub"""
+    #     return 0
+
+    def _rain_callback(self, channel):
+        """count bucket tip on RAIN_PIN rising"""
+        # tofix remove log.debug statement
+        # callback should be very fast
+        log.debug('\ncallback\n')
+        self.rain_bucket_tips = self.rain_bucket_tips + 1
+        if self.rain_bucket_tips >= BUCKET_TIPS_RESET:
+            # set self.rain_reset to False after reporting to weewx client
+            self.rain_reset = True
+            self.rain_bucket_tips = 0
+            self.rain_bucket_tips_prev = 0
+
+    def _setup_rain(self):
+        """set up RAIN_PIN rising to call _rain_callback interrupt handler"""
+        self.rain_bucket_tips = 0
+        self.rain_bucket_tips_prev = 0
+        self.rain_reset = True
+        GPIO.setmode(GPIO.BCM)
+        # GPIO 23 set up as input. It is pulled down to stop false signals.
+        GPIO.setup(RAIN_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        # Make sure you have a button connected so that when pressed
+        # it will connect GPIO port 23 (pin 16) to GND.
+        GPIO.add_event_detect(RAIN_PIN,
+                              GPIO.RISING,
+                              callback = self._rain_callback,
+                              bouncetime = BOUNCETIME)
+        return 0
+
+    def _setup_aht20(self):
+        """default Adafruit aht20 i2c setup"""
+        # tofix check _setup_i2c() called first
+        self.sensor_aht20 = adafruit_ahtx0.AHTx0(self.i2c)
+
+    def _setup_ltr390(self):
+        """default Adafruit ltr390 i2c setup"""
+        # tofix check _setup_i2c() called first
+        self.sensor_ltr390 = adafruit_ltr390.LTR390(self.i2c)
+
+    def _setup_tsl2591(self):
+        """default Adafruit tsl2591 i2c setup; set low gain for bright sunlight;"""
+        # tofix check _setup_i2c() called first
+        self.sensor_tsl2591 = adafruit_tsl2591.TSL2591(self.i2c)
+        # optionally change the gain and integration time:
+        # default (25x gain)
+        # default (100ms integration time)
+
+        self.sensor_tsl2591.gain = adafruit_tsl2591.GAIN_LOW # (1x gain)
+        # self.sensor_tsl2591.gain = adafruit_tsl2591.GAIN_MED # (25x gain)
+        # self.sensor_tsl2591.gain = adafruit_tsl2591.GAIN_HIGH # (428x gain)
+        # self.sensor_tsl2591.gain = adafruit_tsl2591.GAIN_MAX # (9876x gain)
+        self.sensor_tsl2591.integration_time = adafruit_tsl2591.INTEGRATIONTIME_100MS # (100ms)
+        # self.sensor_tsl2591.integration_time = adafruit_tsl2591.INTEGRATIONTIME_200MS # (200ms)
+        # self.sensor_tsl2591.integration_time = adafruit_tsl2591.INTEGRATIONTIME_300MS # (300ms)
+        # self.sensor_tsl2591.integration_time = adafruit_tsl2591.INTEGRATIONTIME_400MS # (400ms)
+        # self.sensor_tsl2591.integration_time = adafruit_tsl2591.INTEGRATIONTIME_500MS # (500ms)
+        # self.sensor_tsl2591.integration_time = adafruit_tsl2591.INTEGRATIONTIME_600MS # (600ms)
+
+    # def _setup_system_temp(self):
+    #     """stub"""
+
+    def rain_inch(self):
+        """convert bucket tips to inches of rainfall"""
+        inches = self.rain_bucket_tips * RAIN_HEIGHT_PER_BUCKET_TIP_INCH_WG
+        return inches
+
+    def _clear_dat(self):
+        """clear all class data members"""
+        self.aht20_temperature     = None
+        self.aht20_humidity        = None
+        self.ltr390_uvs            = None
+        self.ltr390_light          = None
+        self.ltr390_uvi            = None
+        self.ltr390_lux            = None
+        self.tsl2591_lux           = None
+        self.tsl2591_infrared      = None
+        self.tsl2591_visible       = None
+        self.tsl2591_full_spectrum = None
+        # rain not reset
+        self.sht30_temperature     = None
+        self.sht30_humidity        = None
+        self.wind_speed            = None
+        self.wind_speed_max        = None
+        self.wind_direction        = None
+        self.wind_rating           = None
+        self.system_temperature    = None
+        return 0
+
+    def _write_file_binary(self):
+        """
+        open FNAME_STAGE
+        for each weather data member write to FNAME_STAGE
+        """
+        ## <   means little endian byte order
+        ## c   means char
+        ## f   means float;  four  bytes;
+        ## d   means double; eight bytes;
+        ## %d  means substitute nnn e.g. number of items e.g. '<1d' or '<8c'
+        # pack('<%dd' % num_doubles, *array_of_doubles)
+        log.debug('begin _write_file_binary()')
+        # tofix timestamp
+        # tofix, all double no int
+        # same as wmod except wmod has no uvi so
+        # wmod      driver uses UV = uvs
+        # weathere  driver uses UV = uvi  and signal7 = uvs
+        signal2 = self.ltr390_light
+        signal3 = self.tsl2591_full_spectrum
+        signal4 = self.tsl2591_visible
+        signal5 = self.tsl2591_infrared
+        signal6 = self.ltr390_lux
+        signal7 = self.ltr390_uvs
+        double_frame = [
+            self.wind_speed,
+            self.wind_direction,
+            self.wind_speed_max,
+            self.wind_rating,
+            self.sht30_temperature,
+            self.sht30_humidity,
+            self.tsl2591_lux,
+            self.ltr390_uvi,
+            self.rain_inch(),   # computed at last minute
+            self.rain_reset,
+            self.aht20_temperature,
+            self.aht20_humidity,
+            self.system_temperature,
+            signal2,
+            signal3,
+            signal4,
+            signal5,
+            signal6,
+            signal7,
+        ]
+        if len(double_frame) != FRAME_NUMBER_DATA_ITEMS:
+            log.error('error:  len(double_frame) != FRAME_NUMBER_DATA_ITEMS')
+            halt()
+        try:
+            # if FNAME_STAGE in /tmp is owned by other than root
+            # then open for write will fail due to
+            # sysctl -a | grep fs.protected_regular
+            # see https://bbs.archlinux.org/viewtopic.php?id=251217
+            pathlib.Path(FNAME_STAGE).unlink(missing_ok = True)
+
+            log.debug('save frame')
+            log.debug('opening file %s', FNAME_STAGE)
+            with open(FNAME_STAGE, 'wb') as fptr_stage:
+                counter = 0
+                for ddd in double_frame:
+                    # log.debug('%d\t%s\t%s', counter, str(ddd), str(type(ddd)))
+                    counter += 1
+                    if ddd is None:
+                        ppp = b'--------'
+                        log.debug('ddd=%15.3f ppp=%s', ddd, '--------')
+                        fptr_stage.write(ppp)
+                    else:
+                        ddd = float(ddd)
+                        ppp = struct.pack('d', ddd)
+                        log.debug('ddd=%15.3f ppp=%s', ddd, str(ppp))
+                        fptr_stage.write(ppp)
+            # tofix comment this out
+            # log.debug('returning')
+            # return
+        except (OSError, ValueError, EOFError) as exc:
+            log.error('error:  _write_file_binary failed')
+            log.error('fname_stage = %s', FNAME_STAGE)
+            log.error('exc         = %s', str(exc))
+            raise BadWrite from exc
+        log.debug('success:  _write_file_binary %s', FNAME_STAGE)
+        log.debug('=====================================')
+
+    def _write_file(self):
+        """
+        open FNAME_STAGE
+        create a dict with a key for each weather data member;
+        json.dumps(dict)
+        write json to FNAME_STAGE;
+        """
+        log.debug('begin _write_file()')
+        # tofix timestamp
+        # tofix, all double no int
+        # same as wmod except wmod has no uvi so
+        # wmod      driver uses UV = uvs
+        # weathere  driver uses UV = uvi  and signal7 = uvs
+        signal2 = self.ltr390_light
+        signal3 = self.tsl2591_full_spectrum
+        signal4 = self.tsl2591_visible
+        signal5 = self.tsl2591_infrared
+        signal6 = self.ltr390_lux
+        signal7 = self.ltr390_uvs
+        double_frame = {
+            'windSpeed'    : self.wind_speed,
+            'windDir'      : self.wind_direction,
+            'windSpeedMax' : self.wind_speed_max,
+            'windRating'   : self.wind_rating,
+            'outTemp'      : self.sht30_temperature,
+            'outHumidity'  : self.sht30_humidity,
+            'lux'          : self.tsl2591_lux,
+            'UV'           : self.ltr390_uvi,
+            'rain_total'   : self.rain_inch(),   # computed at last minute
+            'rain_reset'   : self.rain_reset,
+            'caseTemp1'    : self.aht20_temperature,
+            'caseHumid1'   : self.aht20_humidity,
+            'cpuTemp1'     : self.system_temperature,
+            'signal2'      : signal2,
+            'signal3'      : signal3,
+            'signal4'      : signal4,
+            'signal5'      : signal5,
+            'signal6'      : signal6,
+            'signal7'      : signal7,
+        }
+        if len(double_frame) != FRAME_NUMBER_DATA_ITEMS:
+            log.error('error:  len(double_frame) != FRAME_NUMBER_DATA_ITEMS')
+            halt()
+        try:
+            # if FNAME_STAGE in /tmp is owned by other than root
+            # then open for write will fail due to
+            # sysctl -a | grep fs.protected_regular
+            # see https://bbs.archlinux.org/viewtopic.php?id=251217
+            pathlib.Path(FNAME_STAGE).unlink(missing_ok = True)
+            log.debug('opening file %s', FNAME_STAGE)
+            with open(FNAME_STAGE, 'w') as fptr_stage:
+                outstr = json.dumps(double_frame)
+                fptr_stage.write(f'{outstr}\n')
+        except (OSError, ValueError, EOFError) as exc:
+            log.error('error:  _write_file failed')
+            log.error('fname_stage = %s', FNAME_STAGE)
+            log.error('exc         = %s', str(exc))
+            raise BadWrite from exc
+        log.debug('success:  wrote file %s', FNAME_STAGE)
+        log.debug('=====================================')
+
+    def _move_file(self):
+        """move FNAME_STAGE to FNAME_FINAL; move is atomic;"""
+        try:
+            shutil.move(FNAME_STAGE, FNAME_FINAL)
+#            shutil.copy(FNAME_STAGE, FNAME_FINAL)
+        except OSError as exc:
+            log.error('error:  move stage failed')
+            log.error('fname_stage = %s', FNAME_STAGE)
+            log.error('fname_final = %s', FNAME_FINAL)
+            log.error('exc         = %s', str(exc))
+            raise BadWrite from exc
+        log.debug('success:  moved file %s', FNAME_STAGE)
+        log.debug('                  to %s', FNAME_FINAL)
+        log.debug('=====================================')
+        self.rain_reset = False
+        return 0
+
+    def _get_dat_aht20(self):
+        """i2c read temperature and humidity inside case"""
+        self.aht20_temperature = self.sensor_aht20.temperature
+        self.aht20_humidity    = self.sensor_aht20.relative_humidity
+        log.debug('caseTemp1  aht20  = %15.3f C ', self.aht20_temperature)
+        self.aht20_temperature = celsius_to_fahrenheit(self.aht20_temperature)
+        log.debug('caseTemp1  aht20  = %15.3f F ', self.aht20_temperature)
+        log.debug('caseHumid1 aht20  = %15.3f %%', self.aht20_humidity)
+        return 0
+
+    def _get_dat_ltr390(self):
+        """i2c read UV and lux2"""
+        self.ltr390_uvs       = self.sensor_ltr390.uvs
+        self.ltr390_light     = self.sensor_ltr390.light
+        self.ltr390_uvi       = self.sensor_ltr390.uvi
+        self.ltr390_lux       = self.sensor_ltr390.lux
+        log.debug('UV                = %15.3f', self.ltr390_uvs)
+        log.debug('Ambient Light     = %15.3f', self.ltr390_light)
+        log.debug('UVI               = %15.3f', self.ltr390_uvi)
+        log.debug('Lux               = %15.3f', self.ltr390_lux)
+        return 0
+
+    def _get_dat_tsl2591(self):
+        """i2c read full spectrum light; infrared light; visible light; computed lux; """
+        # Read the total lux, IR, and visible light levels.
+        # Read and calculate the light level in lux.
+        self.tsl2591_lux = self.sensor_tsl2591.lux
+        # You can also read the raw infrared and visible light levels.
+        # These are unsigned, the higher the number the more light of that type.
+        # There are no units like lux.
+        # Infrared levels range from 0-65535 (16-bit)
+        self.tsl2591_infrared = self.sensor_tsl2591.infrared
+        # Visible-only levels range from 0-2147483647 (32-bit)
+        self.tsl2591_visible = self.sensor_tsl2591.visible
+        # Full spectrum (visible + IR) also range from 0-2147483647 (32-bit)
+        self.tsl2591_full_spectrum = self.sensor_tsl2591.full_spectrum
+
+        log.debug('total light       = %15.3f lux', self.tsl2591_lux)
+        log.debug('infrared light    = %15.3f    ', self.tsl2591_infrared)
+        log.debug('visible light     = %15.3f    ', self.tsl2591_visible)
+        log.debug('full spectrum     = %15.3f    ', self.tsl2591_full_spectrum)
+        log.debug('full spectrum     = infrared + visible')
+        return 0
+
+    def _get_dat_rain(self):
+        """report current count determined by accumulated rain callback calls"""
+        change = self.rain_bucket_tips - self.rain_bucket_tips_prev
+        log.debug('rain tips prev    = %15.3f     ', self.rain_bucket_tips_prev)
+        log.debug('rain tips now     = %15.3f     ', self.rain_bucket_tips)
+        log.debug('rain tips chg     = %15.3f     ', change)
+        log.debug('rain inch now     = %15.3f inch', self.rain_inch())
+        return 0
+
+    def client_tx_rx(self, request, reply, timeout_read):
+        """
+        this (weathere) is a modbus client;
+        request data and receive reply from modbus server (sht30 temp or renke wind);
+        """
+        res = -1
+        log.debug('client_tx_rx begin')
+        display_buf('request = ', request)
+        self.serial.write(bytearray(request))
+        self.serial.flush()
+        delay_microseconds(self.t35_usec)
+        # put delay here since pin is set high here
+        # timeout_read1 = 50
+        # timeout_read1 = 2000
+        timeout_read1 = timeout_read
+        delay_milliseconds(timeout_read1)
+        nread = 0
+        overflow_frame = False
+        while self.serial.in_waiting != 0:
+            # type(byte_read) == bytes
+            byte_read = self.serial.read()
+            # type(int_read) == int
+            int_read = byte_read[0]
+            # log.debug('read byte_read = "%s" int_read = 0x%02x', byte_read, int_read)
+            nread += 1
+            if nread > FRAME_MAX:
+                overflow_frame = True
+            if not overflow_frame:
+                self.input_frame[nread - 1] = int_read
+            delay_microseconds(self.t15_usec)
+        log.debug('read %d bytes', nread)
+        if nread != len(reply):
+            log.debug('error:  nread != len(reply);')
+            log.debug('nread = %d; len(reply) = %d;', nread, len(reply))
+            if nread > len(reply):
+                log.debug('too long')
+            elif nread < len(reply):
+                log.debug('too short')
+            if overflow_frame:
+                log.debug('overflow frame')
+            log.debug('client_tx_rx read FAIL !!!!!!!!!!!!!!!!!!!!!!')
+            display_buf('self.input_frame[0:nread] = ', self.input_frame[0:nread])
+            if nread  < len(reply):
+                return -1
+        reply[:] = self.input_frame[0:len(reply)]
+        display_buf('reply = ', reply)
+        res = calc_crc(reply)
+        if res != 0:
+            log.debug('client_tx_rx crc FAIL !!!!!!!!!!!!!!!!!!!!!!')
+            return -1
+        log.debug('client_tx_rx crc PASS')
+        return 0
+
+    def _get_dat_temp(self):
+        """client_tx_rx with sht30 temperature modbus server"""
+        res = -1
+        res = self.client_tx_rx(self.temp_data_request,
+                                self.temp_data_reply,
+                                TIMEOUT_READ_TEMP)
+        if res != 0:
+            log.debug('_get_dat_temp client_tx_rx FAIL !!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            raise BadRead()
+        if DEBUG_GET_DAT:
+            display_buf('reply = ', self.temp_data_reply)
+        temperature_i          = self.temp_data_reply[3] << 8 | self.temp_data_reply[4]
+        humidity_i             = self.temp_data_reply[5] << 8 | self.temp_data_reply[6]
+        self.sht30_temperature = temperature_i / 100.0
+        self.sht30_humidity    = humidity_i    / 100.0
+        # log.debug('outTemp     int   = %d', temperature_i)
+        # log.debug('outHumidity int   = %d', humidity_i)
+        log.debug('outTemp     sht30 = %15.3f C ', self.sht30_temperature)
+        self.sht30_temperature = celsius_to_fahrenheit(self.sht30_temperature)
+        log.debug('outTemp     sht30 = %15.3f F ', self.sht30_temperature)
+        log.debug('outHumidity sht30 = %15.3f %%', self.sht30_humidity)
+        return 0
+
+    def _get_dat_wind(self):
+        """client_tx_rx with renke wind anemometer (speed, direction) modbus server"""
+        res = -1
+        res = self.client_tx_rx(self.wind_data_request,
+                                self.wind_data_reply,
+                                TIMEOUT_READ_WIND)
+        if res != 0:
+            log.debug('_get_dat_wind client_tx_rx FAIL !!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            raise BadRead()
+        if DEBUG_GET_DAT:
+            display_buf('reply     = ', self.temp_data_reply)
+        wind_speed_i        = self.wind_data_reply[3] << 8 | self.wind_data_reply[4]
+        self.wind_direction = self.wind_data_reply[5] << 8 | self.wind_data_reply[6]
+        wind_speed_max_i    = self.wind_data_reply[7] << 8 | self.wind_data_reply[8]
+        self.wind_rating    = self.wind_data_reply[9] << 8 | self.wind_data_reply[10]
+        self.wind_speed     = (wind_speed_i     / 100.0)
+        self.wind_speed_max = (wind_speed_max_i / 100.0)
+        # log.debug('wind_speed_i      = %d', wind_speed_i)
+        # log.debug('wind spd_max_i    = %d', wind_speed_max_i)
+        log.debug('wind_speed        = %15.3f m/sec', self.wind_speed)
+        log.debug('wind_speed_max    = %15.3f m/sec', self.wind_speed_max)
+        self.wind_speed     *= CONVERT_MPS_TO_MPH
+        self.wind_speed_max *= CONVERT_MPS_TO_MPH
+        log.debug('wind_speed        = %15.3f mph  ', self.wind_speed)
+        log.debug('wind_speed_max    = %15.3f mph  ', self.wind_speed_max)
+        log.debug('wind_direction    = %11d        ', self.wind_direction)
+        log.debug('wind_rating       = %11d        ', self.wind_rating)
+        return 0
+
+    def calc_timeout(self):
+        """time between characters on modbus serial port is determined by BAUD"""
+        # tofix
+        bits_per_packet = 13
+        low_latency = False
+        if (BAUD == 1000000) and low_latency:
+            self.t15_usec = 1
+            self.t35_usec = 10
+        elif (BAUD >= 115200) and low_latency:
+            self.t15_usec = 75
+            self.t35_usec = 175
+        elif BAUD > 19200:
+            self.t15_usec = 750
+            self.t35_usec = 1750
+        else:
+            # self.t15_usec = 15000000/BAUD # 1T * 1.5 = T1.5
+            # self.t35_usec = 35000000/BAUD # 1T * 3.5 = T3.5
+            # tofix these are minimums.  try slightly larger.
+            nudge = 1.0
+            char_per_sec = float(BAUD) / float(bits_per_packet)
+            t_usec = 1.0e6 / char_per_sec
+            self.t15_usec = int(1.5 * nudge * t_usec)
+            self.t35_usec = int(3.5 * nudge * t_usec)
+        log.debug('t15_usec = %d', self.t15_usec)
+        log.debug('t35_usec = %d', self.t35_usec)
+
+    def crc_debug(self):
+        """
+        check modbus crc is correct for fixed temp_data_request
+        """
+        res = 0
+        log.debug('crc_debug begin')
+        res |= calc_crc(self.temp_data_request)
+        # no self.temp_data_reply
+        res |= calc_crc(self.temp_addr_request)
+        # no self.temp_addr_reply
+        res |= calc_crc(self.temp_addr_set_request)
+        # no self.temp_addr_set_reply
+        if res == 0:
+            log.debug('crc_debug PASS')
+        else:
+            log.error('crc_debug FAIL !!!!!!!!!!!!!!!!!!')
+            halt()
+            return -1
+        return 0
+
+    def get_address_temp(self):
+        """get modbus address for sht30 temperature server"""
+        res = -1
+        log.debug('get_address begin')
+        res = self.client_tx_rx(self.temp_addr_request,
+                                self.temp_addr_reply,
+                                TIMEOUT_READ_WIND)
+        if res != 0:
+            log.debug('get_addr client_tx_rx FAIL !!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            return -1
+        addr = self.temp_addr_reply[0]
+        log.debug('address = %d', addr)
+        return 0
+
+    def set_address_temp(self):
+        """set modbus address for sht30 temperature server"""
+        res = -1
+        log.debug('set_address begin')
+        res = self.client_tx_rx(self.temp_addr_set_request,
+                                self.temp_addr_set_reply,
+                                TIMEOUT_READ_WIND)
+        # you can not see reply until reboot of arduino
+        if res != 0:
+            log.debug('get_addr client_tx_rx FAIL !!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+            return -1
+        addr = (self.temp_addr_reply[3] << 8) | self.temp_addr_reply[4]
+        log.debug('addr = %d', addr)
+        return 0
+
+    def _get_dat_system_temp(self):
+        """get temperature of raspberry pi cpu"""
+        try:
+            with open(SYSTEM_TEMP_FILE, 'r') as fptr:
+                temperature_string = fptr.read()
+            self.system_temperature = float(temperature_string) / 1000.0
+            log.debug('cpuTemp1          = %15.3f C', self.system_temperature)
+            self.system_temperature = celsius_to_fahrenheit(self.system_temperature)
+            log.debug('cpuTemp1          = %15.3f F', self.system_temperature)
+            return 0
+        except (OSError, ValueError, EOFError) as exc:
+            log.error('error:  read system_temp failed')
+            log.error('exc = %s', str(exc))
+            self.system_temperature = None
+            raise BadRead() from exc
+
+    def _read_all_sensors(self):
+        """stub"""
+        log.debug('_read_all_sensors =========================================')
+        self._get_dat_temp()
+        self._get_dat_wind()
+        self._get_dat_aht20()
+        self._get_dat_tsl2591()
+        self._get_dat_ltr390()
+        self._get_dat_rain()
+        self._get_dat_system_temp()
+
+    def init_temp_address(self):
+        """
+        use this once with a new temperature sht30 modbus server;
+        after that the address is kept in flash memory of sht30 modbus server;
+        """
+        input('Press Enter when ready > ')
+        self.get_address_temp()
+        self.set_address_temp()
+        self.get_address_temp()
+        halt()
+
+    def _iteration(self):
+        """like arduino loop"""
+        log.debug('LOOP BEGIN ===================================================')
+        try:
+            self._clear_dat()
+            self._read_all_sensors()
+            self._write_file()
+            self._move_file()
+        except BadRead:
+            log.error('error:  _read_all_sensors() fail.  skipping write.')
+        except BadWrite:
+            log.error('error:  _write_file() fail.')
+        time.sleep(MAIN_LOOP_SLEEP)
+
+    def run(self):
+        """stub"""
+        # for attempt in range(0,1):
+        while True:
+            self._iteration()
+
+
+def process_options():
+    """
+    parse command args
+    """
+    usage = """weathere [--debug] [--help] [--version]"""
+    log.info('argparse.ArgumentParser')
+    parser = argparse.ArgumentParser(description=usage)
+    parser.add_argument('--version',
+                        dest='version',
+                        action='store_true',
+                        help='display service version')
+    parser.add_argument('--debug',
+                        dest='debug',
+                        default=DEFAULT_DEBUG,
+                        action='store_true',
+                        help='display diagnostic information while running')
+
+    log.info('parser.parse_args')
+    options = parser.parse_args()
+
+    if options.version:
+        log.info('weathere version = ', SERVICE_VERSION)
+        sys.exit(1)
+
+    if options.debug:
+        log.info('log.setLevel(logging.DEBUG)')
+        log.setLevel(logging.DEBUG)
+    return options
+
+
+def main():
+    """options; signal handling; run service"""
+    # signal handling;
+    # in case needed later;
+    def testing_handle_interrupt(signum, stack):
+        """catch keyboard interrupts; clean up;"""
+        log.error('Handling interrupt.')
+        log.error('signum = %d', signum)
+        log.error('stack = %s', str(stack))
+        log.error('exiting.')
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, testing_handle_interrupt)
+    signal.signal(signal.SIGINT, testing_handle_interrupt)
+
+    log.addHandler(logging.StreamHandler(sys.stdout))
+    log.addHandler(logging.handlers.SysLogHandler(address='/dev/log'))
+    print('log.setLevel INFO')
+    log.setLevel(logging.INFO)
+
+    process_options()
+
+    weathere = Weathere()
+    # weathere.init_temp_address(rtemp)
+    weathere.run()
+
+
+if __name__ == '__main__':
+    main()
+
+
+# eee eof

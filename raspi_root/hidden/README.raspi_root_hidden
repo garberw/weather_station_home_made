@@ -1,0 +1,13 @@
+
+
+dotbashrc.orig                      ~/.bashrc from /etc/skel unmodified since installation;
+
+                                    ~/.bashrc for each raspberry pi; individual colored prompts;
+dotbashrce                          for weathere
+dotbashrcg                          for weatherg
+dotbashrcs                          for weathers
+dotbashrcw                          for weatherw
+
+dotemacs.weatherg.lightweight       a sample ~/.emacs for python on raspi02w; slow;
+dotemacs.weathers.mediumweight      a sample ~/.emacs for python on raspi4b;  somewhat faster;
+

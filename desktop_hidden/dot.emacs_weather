@@ -1,0 +1,528 @@
+;; .emacs
+
+;; general emacs options =============================================
+
+;;; uncomment this line to disable loading of "default.el" at startup
+;; (setq inhibit-default-init t)
+
+;; packages ==========================================================
+
+(when (>= emacs-major-version 24)
+   (require 'package)
+   (add-to-list
+    'package-archives
+    ;; '("melpa" . "http://melpa.org/packages/")
+    '("melpa" . "https://melpa.org/packages/")
+    t)
+   (package-initialize)
+   ;; fixme might reload from internet at every startup
+   (when (not package-archive-contents) (package-refresh-contents))
+   )
+
+; (unless (package-installed-p 'use-package)
+;   (package-refresh-contents)
+;   (package-install 'use-package))
+
+(eval-when-compile
+  (require 'use-package))
+
+;; general emacs options =============================================
+
+(ignore-errors
+  (require 'ansi-color)
+  (defun my-colorize-compilation-buffer ()
+    (when (eq major-mode 'compilation-mode)
+      (ansi-color-apply-on-region compilation-filter-start (point-max))))
+  (add-hook 'compilation-filter-hook 'my-colorize-compilation-buffer))
+
+;; turn on font-lock mode
+(when (fboundp 'global-font-lock-mode)
+  (global-font-lock-mode t))
+
+;; enable visual feedback on selections
+;(setq transient-mark-mode t)
+
+;; default to better frame titles
+(setq frame-title-format
+      (concat  "%b - emacs@" system-name))
+
+;; default to unified diffs
+(setq diff-switches "-u")
+
+(setq-default indent-tabs-mode nil)
+
+(defun wg-search-case-y () (interactive) (setq case-fold-search t))
+(defun wg-search-case-n () (interactive) (setq case-fold-search nil))
+(global-set-key "\C-cy" 'wg-search-case-y)
+(global-set-key "\C-cn" 'wg-search-case-n)
+
+(set-face-foreground 'font-lock-comment-face "red")
+
+;; fix cursor ghosting fedora 10 ;; does this help???
+(setq column-number-mode t)
+
+(global-set-key (kbd "C-c w") 'toggle-truncate-lines)
+
+;; cursor control and scrolling; =====================================
+
+(global-set-key [(control up)]   "\C-u-1\C-v")
+(global-set-key [(control down)] "\C-u1\C-v")
+(global-set-key [(control home)] 'beginning-of-buffer)
+(global-set-key [(control end)] 'end-of-buffer)
+(global-set-key [(clearline)] 'end-of-buffer)
+
+(if (not window-system);; Only use in tty-sessions.
+     (progn
+      (defvar arrow-keys-map (make-sparse-keymap) "Keymap for arrow keys")
+      (define-key esc-map "O" arrow-keys-map)
+;; ctrl-up
+      (define-key arrow-keys-map "5A" "\C-u-1\C-v")
+;; ctrl-down
+      (define-key arrow-keys-map "5B" "\C-u1\C-v")
+;; home
+;;      (define-key arrow-keys-map "H" "\M-<")
+;; end
+;;      (define-key arrow-keys-map "F" "\M->")
+;; --------------------------------------------
+      (define-key esc-map "[" arrow-keys-map)
+      (define-key arrow-keys-map "1;5A" "\C-u-1\C-v")
+      (define-key arrow-keys-map "1;5B" "\C-u1\C-v")
+;; --------------------------------------------
+      )
+  )
+
+(blink-cursor-mode 0)
+(setq visible-cursor nil)
+
+;; switch window focus; C-c <right> should go clockwise;
+(global-set-key (kbd "C-c <right>") "\C-xo")
+(global-set-key (kbd "C-c <left>")  "\C-u-1\C-xo")
+;; (global-set-key (kbd "S-<kp-add>") "\C-xo")
+;; (global-set-key (kbd "S-<kp-subtract>") "\C-u-1\C-xo")
+
+(setq ediff-split-window-function 'split-window-horizontally)
+
+;; dired; ============================================================
+
+;;(defun garberw-toggle-symlink-targets ()
+;;  (setq dired-hide-details-hide-symlink-targets
+;;	(not dired-hide-details-hide-symlink-targets)
+;;	)
+;;  )
+;; dired-hide-details-hide-symlink-targets does not do what I want but anyway would
+;; need "customize-set-variable" not above function; use key binding
+;;(global-set-key "\C-c\C-l" 'garberw-toggle-symlink-targets)
+(global-set-key "\C-c\C-l" "\M-x dired-hide-details-mode")
+
+; f2 = search
+(global-set-key [f2] 'dired-do-search)
+
+; C-f2 = query replace
+(global-set-key [(shift f2)] 'dired-do-query-replace-regexp)
+
+; [(shift f2)]
+(global-set-key [f14] 'dired-do-query-replace-regexp)   
+
+; M-, = tags-loop-continue  (instead of recent default "xref-pop-marker-stack")
+(global-set-key "\M-," 'tags-loop-continue)
+
+; f3 = goto line
+(global-set-key [f3]  'goto-line)
+
+;; dired-x advanced mode
+(add-hook 'dired-load-hook
+	  (lambda ()
+	    (load "dired-x")
+	    ;; set dired-x global variables here.  For example:
+            ;; (setq dired-guess-shell-gnutar "gtar")
+            ;; (setq dired-x-hands-off-my-keys nil)
+	    )
+	  )
+
+(add-hook 'dired-mode-hook
+	  (lambda ()
+	    ;; set dired-x buffer-local variables here.
+	    ;; default omit
+	    (dired-omit-mode 1)
+	    ;; default omits . and ..
+	    ;; (setq dired-omit-files "^#\\|\\.$")
+	    ;; would like to keep . and .. and omit *~
+	    ;;(setq dired-omit-files "*~$")
+	    ;; omit ".aaa#" "aaa~" ".aaa"
+	    (setq dired-omit-files
+		  (concat dired-omit-files "^\\.?#\\|~$\\|^\\.$\\|^\\.[^\\.]"))
+	    )
+	  )
+
+;; (add-hook 'dired-mode-hook (lambda () (local-set-key (kbd "C-^") 'dired-dotfiles-toggle)) )
+;; also bound to "C-xM-o"
+(add-hook 'dired-mode-hook (lambda () (local-set-key (kbd "C-^") 'dired-omit-mode) ) )
+
+;; see customization section and dired-guess-shell-alist-user
+
+;; dired+; ===========================================================
+
+;; these two setq must precede loading dired+
+
+;; file permissions
+;; should use customize instead of this
+(setq diredp-hide-details-initially-flag nil)
+
+;; use same hide-details mode as previous buffer
+(setq diredp-hide-details-propagate-flag nil)
+
+;; (require 'dired+)
+(setq diredp-wrap-around-flag nil)
+
+; arduino; ===========================================================
+
+; (global-set-key [f5] "\M-xfind-dired\n/home/garberw/Arduino\n-name \"weather*.cpp\" -o -name \"weather*.h\" -o -name \"weather*.ino\"")
+
+; (global-set-key [(shift f5)] "\M-xfind-dired\n/home/garberw/Arduino\n-name \"*.cpp\" -o -name \"*.h\" -o -name \"*.ino\"\n")
+
+(defun garberw-find-dired1 () (interactive)
+;;  (find-dired "/home/garberw/Arduino/weather*"
+       (find-dired "/home/garberw/Arduino/"
+	      "-name \"weather*.cpp\" -o -name \"weather*.h\" -o -name \"weather*.ino\""
+	      )
+  )
+(global-set-key [f5] 'garberw-find-dired1)
+
+(defun garberw-find-dired2 () (interactive)
+;;  (find-dired "/home/garberw/Arduino/weather*"
+       (find-dired "/home/garberw/Arduino"
+	      "-name \"*.cpp\" -o -name \"*.h\" -o -name \"*.ino\""
+	      )
+  )
+(global-set-key [(shift f5)] 'garberw-find-dired2)
+
+(defun compile-arduino-local() (interactive) (setq compile-command "wg-arduino-build.sh"))
+(global-set-key "\C-c\M-s" 'compile-arduino-local)
+
+(global-set-key "\C-cac" "\C-c\M-s\M-x compile\n c\n\C-xo\C-x1\M->")
+(global-set-key "\C-cal" "\C-c\M-s\M-x compile\n l\n\C-xo\C-x1\M->")
+(global-set-key "\C-car" "\C-c\M-s\M-x compile\n r\n\C-xo\C-x1\M->")
+(global-set-key "\C-caw" "\C-c\M-s\M-x compile\n w\n\C-xo\C-x1\M->")
+(global-set-key "\C-caa" "\C-c\M-s\M-x compile\n a\n\C-xo\C-x1\M->")
+(global-set-key "\C-cag" "\C-c\M-s\M-x compile\n g\n\C-xo\C-x1\M->")
+(global-set-key "\C-cax" "\C-c\M-s\M-x compile\n x\n\C-xo\C-x1\M->")
+(global-set-key "\C-cam" "\C-c\M-s\M-x compile\n m\n\C-xo\C-x1\M->")
+(global-set-key "\C-cah" "\C-c\M-s\M-x compile\n h\n\C-xo\C-x1\M->")
+
+(global-set-key "\C-cc" "\M-x kill-compilation")
+
+; C-f3 = mode c++
+(global-set-key [C-f3] "\M-x c++-mode")
+
+;; (setq confirm-kill-processes t)
+(setq confirm-kill-processes nil)
+
+;; printing; =========================================================
+
+(require 'facemenu)
+(require 'printing)
+;(setq pr-path-alist
+;      '((unix      "." "~/bin" ghostview mpage PATH)
+;	(ghostview "$HOME/bin/gsview-dir")
+;	(mpage     "$HOME/bin/mpage-dir")
+;	))
+;(setq pr-txt-name      'prt_06a)
+(setq pr-txt-printer-alist
+      '((lpg-duplex "lpr" nil "lpg-duplex")
+	(lpg        "lpr" nil "lpg")
+	(lpc-duplex "lpr" nil "lpc-duplex")
+	(lpc        "lpr" nil "lpc")
+	)
+      )
+
+;(setq pr-ps-name       'lps_06b)
+
+(setq pr-ps-printer-alist
+      '((lpg-duplex "lpr" nil "-P" "lpg-duplex")
+	(lpg        "lpr" nil "-P" "lpg")
+	(lpc-duplex "lpr" nil "-P" "lpc-duplex")
+	(lpc        "lpr" nil "-P" "lpc")
+	)
+      )
+(pr-update-menus t); update now printer and utility menus
+
+;; markdown mode; ====================================================
+
+(use-package markdown-mode
+  :ensure t
+  :commands (markdown-mode gfm-mode)
+  :mode (("README\\.md\\'" . gfm-mode))
+  :init (setq markdown-command "/usr/bin/multimarkdown")
+  :bind (:map markdown-mode-map
+              ("C-c C-e" . markdown-do)
+              )
+  )
+
+(global-set-key "\C-c\C-m" 'markdown-preview)
+
+;; openwith; =========================================================
+
+;; if you comment out the next three lines, emacs (not -nw) shows pdf images inline
+(load-library "openwith")
+(require 'openwith)
+(openwith-mode t)
+
+;; see customization for openwith settings
+
+;; auto-mode-alist language recognition; =============================
+
+;; fixme unbind .xml and .html; normal editing for them ...
+;; fixme bind "\C-c x" and "\C-c h" or something like that to open .html or .xml file in firefox
+
+;; This adds additional extensions which indicate files normally
+;; handled by cc-mode.
+(setq auto-mode-alist
+      (append '(("\\.C$"  . c++-mode)
+		("\\.cc$" . c++-mode)
+		("\\.hh$" . c++-mode)
+		("\\.h$"  . c++-mode))
+	      auto-mode-alist)
+      )
+
+;; ===================================================================
+;; ===================================================================
+;; ===================================================================
+;; python; begin; ====================================================
+
+;; ---- duplicated from above ----
+;; basic packaging support
+;; (require 'package)
+;; add Melpa repository
+;; (add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
+;; initialize package infrastructure
+;; (package-initialize)
+
+;; may require this:
+;; if there are no archived package contents, refresh them
+;; build current package content list if it does not already exist
+;; (when (not package-archive-contents) (package-refresh-contents))
+
+(defvar wg-python-packages
+  '(better-defaults       ;; minor changes to emacs defaults;; I do not like this ????
+    ;; material-theme     ;; dark background;; I do not like
+    elpy                  ;; comprehensive ide;; see below
+    flycheck              ;; on-the-fly syntax checking
+    ;; pick one of following two lines
+    py-autopep8           ;; run autopep8 on save
+    blacken               ;; run blacken formatting on save
+    ein
+;;    ein-notebook
+;;    ein-subpackages
+    )
+  )
+
+(mapc #'(lambda (package) (unless (package-installed-p package) (package-install package)) )
+      wg-python-packages)
+
+(setq inhibit-startup-message t)   ;; hide startup message
+;; (load-theme 'material t)           ;; dark background
+;; (global-linum-mode t)              ;; line numbers
+(global-set-key (kbd "\C-c n") "\M-x global-linum-mode")  ;; toggle line numbers
+
+;; M-x package-show-package-list      ;; interactive package manager
+;; F ;; filter list
+;; Q ;; quit
+;; i ;; mark for install with dependencies
+;; d ;; mark for delete  with dependencies
+;; x ;; executed marked actions
+
+;; python.el ;; python-mode;; built-in default;; indenting;; syntax highlighting
+
+;; elpy package  ;; emacs lisp python environment;; near complete ide;;
+;;               ;; auto-indent;; syntax highlight;; auto completion;; syntax check;;
+;;               ;; python REPL integration;; virtual environment support
+;; https://elpy.readthedocs.io/en/latest/index.html
+;; Requires      ;; company-0.8.2; find-file-in-project-3.3; highlight-indentation-0.5.0;
+;;               ;; pyvenv-1.3; yasnippet-0.8.0;
+;; may need to do M-x package-refresh-contents
+
+(elpy-enable) ;; include elpy in wg-python-packages
+
+;; use IPython for REPL
+(setq python-shell-interpreter "jupyter"
+      python-shell-interpreter-args "console --simple-prompt"
+      python-shell-prompt-detect-failure-warning nil)
+(add-to-list 'python-shell-completion-native-disabled-interpreters "jupyter")
+
+;; enable flycheck     ;; could not find flycheck (alone);; use flycheck-pyflakes
+;(when (require 'flycheck nil t)
+;  (setq elpy-modules (delq 'elpy-module-flymake elpy-modules))
+;  (add-hook 'elpy-mode-hook 'flycheck-mode)
+					;  )
+(when (load "flycheck" t t)
+  (setq elpy-modules (delq 'elpy-module-flymake elpy-modules))
+  (add-hook 'elpy-mode-hook 'flycheck-mode)    )
+
+;; This package adds support for pyflakes to flycheck. To use it, add to your init.el:
+(require 'flycheck-pyflakes)
+(add-hook 'python-mode-hook 'flycheck-mode)
+
+;; If you want to use pyflakes you probably don't want pylint or flake8.
+;; To disable those checkers, add the following to your init.el:
+(add-to-list 'flycheck-disabled-checkers 'python-flake8)
+(add-to-list 'flycheck-disabled-checkers 'python-pylint)
+
+;; choose autopep8 or blacken
+;;(setq wg-choose-autopep8 't)
+(setq wg-choose-autopep8 nil)
+
+;; black and autopep8 enabled by above; see M-x elpy-config
+(when wg-choose-autopep8
+  (require 'py-autopep8)
+  (add-hook 'elpy-mode-hook 'py-autopep8-enable-on-save)
+  )
+
+;; Provides the py-autopep8 command, which uses the external "autopep8"
+;; tool to tidy up the current buffer according to Python's PEP8.
+;; To automatically apply when saving a python file, use the following code:
+(when wg-choose-autopep8
+  (add-hook 'python-mode-hook 'py-autopep8-enable-on-save)
+  )
+
+;; To customize the behaviour of "autopep8" you can set the
+;; py-autopep8-options e.g.
+(when wg-choose-autopep8
+  (setq py-autopep8-options '("--max-line-length=100"))
+  ;; 315 is a full screen in 1080p xterm standard (whatever) font
+  ;(setq py-autopep8-options '("--max-line-length=315"))
+  ;(setq py-autopep8-options '("--max-line-length=79"))
+  )
+
+;; inline images for jupyter
+(iimage-mode)
+(setq org-startup-with-inline-images t)
+
+;; gud pdb (debugger)
+(setq gud-pdb-command-name "python -m pdb ")
+
+(define-key elpy-mode-map [(control down)] "\C-u1\C-v")
+(define-key elpy-mode-map [(control up)] "\C-u-1\C-v")
+
+;; (require 'color-theme-buffer-local)
+; (setq python-theme 'color-theme-robin-hood)
+;; (add-hook 'python-mode
+;; 	  (lambda nil (color-theme-buffer-local python-theme (current-buffer))) )
+
+;; python; end; ======================================================
+;; ===================================================================
+;; ===================================================================
+;; ===================================================================
+
+;; ===================================================================
+;; ===================================================================
+;; ===================================================================
+;; customization; openwith; dired; begin; ============================
+
+(custom-set-variables
+ ;; custom-set-variables was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(auto-compression-mode t nil (jka-compr))
+ '(case-fold-search t)
+ '(current-language-environment "UTF-8")
+ '(default-input-method "rfc1345")
+ '(ein:jupyter-default-kernel 'python3)
+ '(ein:output-area-inlined-images t)
+ '(global-font-lock-mode t nil (font-lock))
+ '(large-file-warning-threshold 100000000)
+ '(lpr-command "enscript")
+ '(lpr-switches '("-G" "-P lpg" "-DDuplex:true" "-fCourier7"))
+ '(openwith-associations
+   '(("\\.pdf\\'" "okular"
+      (file))
+     ("\\.djvu\\'" "okular"
+      (file))
+     ("\\.chm\\'" "okular"
+      (file))
+     ("\\.epub\\'" "okular"
+      (file))
+     ("\\.ps\\'" "evince"
+      (file))
+     ("\\.\\(?:html\\|htm\\|xml\\)\\'" "firefox"
+      (file))
+     ("\\.\\(?:mp3\\|ogg\\)\\'" "xmms"
+      (file))
+     ("\\.\\(?:flv\\|mpv\\|avi\\|asf\\|mov\\|mpe?g\\|wmv\\)\\'" "totem"
+      (file))
+     ("\\.\\(?:jpe?g\\|png\\|pnm\\|bmp\\|gif\\)\\'" "wg-geeqie.sh"
+      (file))
+     ("\\.\\(?:JPE?G\\|PNG\\|PNM\\|BMP\\|GIF\\)\\'" "wg-geeqie.sh"
+      (file))
+     ("\\.\\(?:odt\\|docx?\\)\\'" "oowriter"
+      (file))
+     ("\\.\\(?:odp\\|ppt?\\)\\'" "ooimpress"
+      (file))
+     ("\\.\\(?:ods\\|xlsx?\\|csv\\)\\'" "oocalc"
+      (file))
+     ("\\.gnucash\\'" "gnucash"
+      (file))))
+ '(package-selected-packages
+   '(x86-lookup nasm-mode arduino-cli-mode arduino-mode ## markdown-mode openwith blacken py-autopep8 elpy theme-looper spacemacs-theme ob-ipython jupyter flymake-python-pyflakes flycheck-pyflakes ein-mumamo ein eink-theme color-theme-modern better-defaults zmq kubernetes))
+ '(send-mail-function 'mailclient-send-it)
+ '(warning-suppress-log-types '((comp) (comp)))
+ '(warning-suppress-types '((comp))))
+(custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(dired-symlink ((t (:foreground "red"))))
+ '(diredp-dir-heading ((t (:background "color-216" :foreground "darkred"))))
+ '(diredp-dir-name ((t (:background "color-229" :foreground "blue"))))
+ '(diredp-file-name ((t (:foreground "black"))))
+ '(flycheck-error ((t (:background "white" :foreground "darkred"))))
+ '(font-lock-keyword-face ((t (:foreground "green" :weight bold)))))
+
+(setq dired-guess-shell-alist-user
+      (list
+       (list "\\.pdf$" "nohup okular * </dev/null >/dev/null 2>&1 &")
+       ; (list "\\.pdf$" "nohup evince * </dev/null >/dev/null 2>&1 &")
+       (list "\\.chm$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.djvu$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.epub$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.ods$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.xlsx$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.csv$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.odp$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.ppt$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.odt$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.doc$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.docx$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.jpg$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.webp$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.jpeg$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.png$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.pnm$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.bmp$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.gif$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.JPG$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.JPEG$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.PNG$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.PNM$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.BMP$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.GIF$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.flv$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.mpv$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.avi$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.asf$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.mov$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.mpg$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.mpeg$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.wmv$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.mp3$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       (list "\\.ogg$" "nohup xdg-open * </dev/null >/dev/null 2>&1 &")
+       )
+      )
+
+;; customization; openwith; dired; end; ==============================
+;; ===================================================================
+;; ===================================================================
+;; ===================================================================
+
+;; eee eof

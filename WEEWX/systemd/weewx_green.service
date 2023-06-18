@@ -1,0 +1,35 @@
+# systemd configuration for weewx
+
+[Unit]
+Description=weewx_green weather system
+Requires=time-sync.target
+# garberw added sshd.service, weatherg.service
+# if weatherg is on weewx server use weatherg.service in next line
+# After=time-sync.target, sshd.service, weatherg.service
+After=time-sync.target
+After=sshd.service
+RequiresMountsFor=/home
+
+[Service]
+ExecStart=/usr/bin/weewxd_green --config=/etc/weewx/weewx_green.conf --daemon --pidfile=/run/weewx_green.pid --log-label=weewx_green
+ExecReload=/bin/kill -HUP $MAINPID
+Type=forking
+PIDFile=/run/weewx_green.pid
+#User=weewx
+#Group=weewx
+# remove next two lines for debugging
+LogLevelMax=3
+StandardOutput=null
+# 0 = emergency
+# 1 = alert
+# 2 = critical
+# 3 = error
+# 4 = warning
+# 5 = notice
+# 6 = info and debug
+# LogLevelMax=warning
+# StandardOutput=null
+
+
+[Install]
+WantedBy=multi-user.target

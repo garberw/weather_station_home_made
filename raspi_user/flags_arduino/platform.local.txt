@@ -1,0 +1,9 @@
+# garberw added these
+# compiler.cpp.extra_flags=
+# -DRTC_NONE
+# -DSMALL_RUN_LOOP_DELAY
+# -DSELECT_IAQ1
+# -DSELECT_IAQ2
+
+compiler.libraries.ldflags=/home/garberw/Arduino/libraries/BSEC_Software_Library/src/cortex-m4/fpv4-sp-d16-hard/libalgobsec.a 
+

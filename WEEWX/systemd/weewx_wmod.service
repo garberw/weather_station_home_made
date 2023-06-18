@@ -1,0 +1,18 @@
+# systemd configuration for weewx
+
+[Unit]
+Description=weewx_wmod weather system
+Requires=time-sync.target
+After=time-sync.target
+RequiresMountsFor=/home
+
+[Service]
+ExecStart=/usr/bin/weewxd_wmod --config=/etc/weewx/weewx_wmod.conf --daemon --pidfile=/run/weewx_wmod.pid --log-label=weewx_wmod
+ExecReload=/bin/kill -HUP $MAINPID
+Type=forking
+PIDFile=/run/weewx_wmod.pid
+#User=weewx
+#Group=weewx
+
+[Install]
+WantedBy=multi-user.target

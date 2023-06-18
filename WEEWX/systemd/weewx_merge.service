@@ -1,0 +1,29 @@
+# systemd configuration for weewx_merge
+
+[Unit]
+Description=weewx_merge.service
+Wants=weewx_timer.timer
+Requires=time-sync.target
+After=time-sync.target
+RequiresMountsFor=/home
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/wee_reports_merge --config=/etc/weewx/weewx_merge.conf
+LogLevelMax=0
+StandardOutput=null
+# does not read config from /etc/default/weewx_merge
+# ExecStart=/usr/bin/wee_reports_merge --config=/etc/weewx/weewx_merge.conf
+# remove next two lines for debugging
+# 0 = emergency
+# 1 = alert
+# 2 = critical
+# 3 = error
+# 4 = warning
+# 5 = notice
+# 6 = info and debug
+# LogLevelMax=warning
+# StandardOutput=null
+
+[Install]
+WantedBy=multi-user.target

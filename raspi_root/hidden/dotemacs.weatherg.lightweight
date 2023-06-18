@@ -1,0 +1,234 @@
+;;; uncomment this line to disable loading of "default.el" at startup
+;; (setq inhibit-default-init t)
+
+;; turn on font-lock mode
+(when (fboundp 'global-font-lock-mode)
+  (global-font-lock-mode t))
+
+;; enable visual feedback on selections
+;(setq transient-mark-mode t)
+
+;; default to better frame titles
+(setq frame-title-format
+      (concat  "%b - emacs@" system-name))
+
+;; default to unified diffs
+(setq diff-switches "-u")
+
+
+; shortcuts to commands ===========================================================
+; compile in parallel
+; (setq compile-command "time make -d -k -j 4")
+; single computer
+;(setq compile-command "time make -k -j 3")
+; distcc on 8 single-threaded cores (see distcc configuration)
+(setq compile-command "time make -k -j8")
+;(setq compile-command "time pump make -k -j8 CC=distcc CXX=distcc")
+; ========!!!!!!!!!!!!!!!!! for not distcc
+;(defun compile-only-g () (interactive) (setq compile-command "time make -k -j 4 dft.g.bin"))
+;(defun compile-all    () (interactive) (setq compile-command "time make -k -j 4"))
+; ========!!!!!!!!!!!!!!!!! for distcc
+(defun compile-only-g () (interactive) (setq compile-command "time make -k -j 8 programs_debug"))
+(defun compile-all    () (interactive) (setq compile-command "time make -k -j 8"))
+(defun compile-arduino() (interactive) (setq compile-command "wg-arduino-make.sh"))
+
+; exit
+;(global-set-key "\C-c\C-c" "\C-x\C-c")
+
+;;(defun garberw-toggle-symlink-targets ()
+;;  (setq dired-hide-details-hide-symlink-targets
+;;	(not dired-hide-details-hide-symlink-targets)
+;;	)
+;;  )
+;; dired-hide-details-hide-symlink-targets does not do what I want but anyway would
+;; need "customize-set-variable" not above function; use key binding
+;;(global-set-key "\C-c\C-l" 'garberw-toggle-symlink-targets)
+(global-set-key "\C-c\C-l" "\M-x dired-hide-details-mode")
+
+(global-set-key "\C-c\C-c" "\C-xd~/Calendar")
+(global-set-key "\C-c\C-n" "\C-xd~/Note")
+(global-set-key "\C-c\C-f" "\C-xd~/Downloads")
+(global-set-key "\C-c\C-u" "\C-xd~/UNIVERSITY")
+
+; f2 = search
+(global-set-key [f2] 'dired-do-search)
+; C-f2 = query replace
+(global-set-key [(shift f2)] 'dired-do-query-replace-regexp)
+; M-, = tags-loop-continue  (instead of recent default "xref-pop-marker-stack")
+(global-set-key "\M-," 'tags-loop-continue)
+; [(shift f2)]
+(global-set-key [f14] 'dired-do-query-replace-regexp)   
+; f3 = goto line
+(global-set-key [f3]  'goto-line)
+(global-set-key "\C-c\M-a" 'compile-arduino)
+;;(global-set-key "\C-cac" "\M-! wg-arduino-make.sh c\n\C-xo\C-x1\M-<")
+(global-set-key "\C-cac" "\C-c\M-a\M-x compile\n c\n\C-xo\C-x1\M-<")
+(global-set-key "\C-cal" "\C-c\M-a\M-x compile\n l\n\C-xo\C-x1\M-<")
+(global-set-key "\C-car" "\C-c\M-a\M-x compile\n r\n\C-xo\C-x1\M-<")
+(global-set-key "\C-cai" "\C-c\M-a\M-x compile\n i\n\C-xo\C-x1\M-<")
+(global-set-key "\C-caa" "\C-c\M-a\M-x compile\n a\n\C-xo\C-x1\M-<")
+(global-set-key "\C-cc" "\M-x kill-compilation")
+(global-set-key "\C-c\C-g"   'compile-only-g)
+(global-set-key "\C-c\C-a"   'compile-all)
+; f4       = compile all   ; maximize other window, move to beginning
+; shift f4 = compile only g; maximize other window, move to beginning
+(global-set-key [f4]         "\C-c\C-a\M-x compile\n\n\C-xo\C-x1\M-<") 
+(global-set-key [(shift f4)] "\C-c\C-g\M-x compile\n\n\C-xo\C-x1\M-<") 
+(global-set-key [C-f4]       "\M-x kill-compilation")
+; compile with a specific makefile
+; (global-set-key [C-f4] "\M-x compile\C-m -f TestHeaders.make")
+; C-f4 = maximize other window, move to beginning
+; (global-set-key [C-f4] "\C-xo\C-x1\M-<") 
+
+; C-f3 = mode c++
+(global-set-key [C-f3] "\M-x c++-mode")
+
+; C-c r C-c r = query replace
+;(global-set-key (kbd "\C-c r \C-c r") 'dired-do-query-replace-regexp)
+
+; dired directories f5-f12 ========================================================
+
+;; these two setq must precede loading dired+
+;; file permissions
+;; should use customize instead of this
+(setq diredp-hide-details-initially-flag nil)
+;; use same hide-details mode as previous buffer
+(setq diredp-hide-details-propagate-flag nil)
+;; (require 'dired+)
+(setq diredp-wrap-around-flag nil)
+
+;;(let ((default-directory "~/.emacs.d/lisp/"))
+;;  (normal-top-level-add-to-load-path '("."))
+;;  (normal-top-level-add-subdirs-to-load-path))
+
+(global-set-key [(control up)]   "\C-u-1\C-v")
+(global-set-key [(control down)] "\C-u1\C-v")
+
+;;(global-set-key ";5A" "\C-u-1\C-v")
+;;(global-set-key ";5B" "\C-u1\C-v")
+
+(if (not window-system);; Only use in tty-sessions.
+     (progn
+      (defvar arrow-keys-map (make-sparse-keymap) "Keymap for arrow keys")
+      (define-key esc-map "O" arrow-keys-map)
+;; ctrl-up
+      (define-key arrow-keys-map "5A" "\C-u-1\C-v")
+;; ctrl-down
+      (define-key arrow-keys-map "5B" "\C-u1\C-v")
+;; home
+;;      (define-key arrow-keys-map "H" "\M-<")
+;; end
+;;      (define-key arrow-keys-map "F" "\M->")
+;; --------------------------------------------
+      (define-key esc-map "[" arrow-keys-map)
+      (define-key arrow-keys-map "1;5A" "\C-u-1\C-v")
+      (define-key arrow-keys-map "1;5B" "\C-u1\C-v")
+;; --------------------------------------------
+      )
+  )
+
+(global-set-key [(control home)] 'beginning-of-buffer)
+(global-set-key [(control end)] 'end-of-buffer)
+(global-set-key [(clearline)] 'end-of-buffer)
+
+(custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(dired-symlink ((t (:foreground "red"))))
+ '(diredp-dir-heading ((t (:background "color-216" :foreground "darkred"))))
+ '(diredp-dir-name ((t (:background "color-229" :foreground "blue"))))
+ '(diredp-file-name ((t (:foreground "black"))))
+ '(flycheck-error ((t (:background "white" :foreground "darkred"))))
+ '(font-lock-keyword-face ((t (:foreground "green" :weight bold)))))
+
+
+(defun wg-search-case-y () (interactive) (setq case-fold-search t))
+(defun wg-search-case-n () (interactive) (setq case-fold-search nil))
+(global-set-key "\C-cy" 'wg-search-case-y)
+(global-set-key "\C-cn" 'wg-search-case-n)
+
+(set-face-foreground 'font-lock-comment-face "red")
+
+;; This adds additional extensions which indicate files normally
+;; handled by cc-mode.
+(setq auto-mode-alist
+      (append '(("\\.C$"  . c++-mode)
+		("\\.cc$" . c++-mode)
+		("\\.hh$" . c++-mode)
+		("\\.h$"  . c++-mode))
+	      auto-mode-alist)
+      )
+
+;; fix cursor ghosting fedora 10
+;; does this help???
+;; (setq column-number-mode 1)
+(setq column-number-mode t)
+
+;; dired-x advanced mode
+(add-hook 'dired-load-hook
+	  (lambda ()
+	    (load "dired-x")
+	    ;; set dired-x global variables here.  For example:
+            ;; (setq dired-guess-shell-gnutar "gtar")
+            ;; (setq dired-x-hands-off-my-keys nil)
+	    )
+	  )
+
+(add-hook 'dired-mode-hook
+	  (lambda ()
+	    ;; set dired-x buffer-local variables here.
+	    ;; default omit
+	    (dired-omit-mode 1)
+	    ;; default omits . and ..
+	    ;; (setq dired-omit-files "^#\\|\\.$")
+	    ;; would like to keep . and .. and omit *~
+	    ;;(setq dired-omit-files "*~$")
+	    ;; omit ".aaa#" "aaa~" ".aaa"
+	    (setq dired-omit-files
+		  (concat dired-omit-files "^\\.?#\\|~$\\|^\\.$\\|^\\.[^\\.]"))
+	    )
+	  )
+
+;; (add-hook 'dired-mode-hook (lambda () (local-set-key (kbd "C-^") 'dired-dotfiles-toggle)) )
+;; also bound to "C-xM-o"
+(add-hook 'dired-mode-hook (lambda () (local-set-key (kbd "C-^") 'dired-omit-mode) ) )
+
+(defun char-fill-to-col (char column)
+  "Fill region with CHAR, up to COLUMN."
+  (interactive "cFill with char: \nnto column: \n")
+  (when (< (current-column) column)
+    (insert (make-string (- column (current-column)) char))
+    )
+  )
+
+(defun garberw-split-punctuation1 ()
+  (interactive)
+  (query-replace-regexp
+   ;; "\([.,]\) *\([^\C-m]\)"
+   ;; "\1\C-m\2"
+   "\\([.,]\\) *\\([^\C-j]\\)"
+   "\\1\C-j\\2" )
+  )
+
+(blink-cursor-mode 0)
+(setq visible-cursor nil)
+
+(global-set-key (kbd "C-c w") 'toggle-truncate-lines)
+
+;; switch window focus; C-c <right> should go clockwise;
+(global-set-key (kbd "C-c <right>") "\C-xo")
+(global-set-key (kbd "C-c <left>")  "\C-u-1\C-xo")
+;; (global-set-key (kbd "S-<kp-add>") "\C-xo")
+;; (global-set-key (kbd "S-<kp-subtract>") "\C-u-1\C-xo")
+
+(setq ediff-split-window-function 'split-window-horizontally)
+
+(add-hook 'python-mode-hook
+	  (lambda ()
+	    (setq indent-tabs-mode nil)
+	    )
+	  )
+
+;; eee eof

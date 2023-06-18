@@ -1,0 +1,5 @@
+
+USER_HOME=/home/garberw
+GIT_HOME=${USER_HOME}/git/weather_station_home_made
+
+# eee eof

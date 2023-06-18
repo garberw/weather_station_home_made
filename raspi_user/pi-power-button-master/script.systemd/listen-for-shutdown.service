@@ -1,0 +1,12 @@
+[Unit]
+Description=pi-power-button
+
+[Service]
+User=root
+WorkingDirectory=/root
+ExecStart=/usr/local/bin/listen-for-shutdown.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,36 @@
+
+ID_SERIAL_SHORT comes from the iSerial string (if present) in the USB device descriptor;
+
+type
+
+# udevadm info /dev/ttyACM0 | grep ID_SERIAL_SHORT
+
+
+this same udev directory can be used on all raspi; weathers; weathere; weatherg; weatherw;
+after installing the raspi automatically creates a symbolic link
+
+wpa   for atlas             arduino;
+wpw   for weatherw radio rx arduino;
+wpc   for weatherw client   arduino;
+wpl   for weatherw light    arduino;
+wpr   for weatherw rain     arduino;
+wpg   for weatherg/green    arduino;
+
+these point to the device e.g.
+
+/dev/wpc -> /dev/ttyACM2
+
+the purpose is to automatically give a fixed name;
+if they do not give a fixed name there is probably an error in the flashed program
+on the arduino and it has crashed;
+see the wg-arduino-build.sh script recovery method in the documentation;
+see also the wg-arduino-reset-* and wg-arduino-enter-bootloader-* scripts;
+
+if the arduino is badly crashed you can enter the bootloader with that script
+using the raspi instead of double clicking the reset button on the arduino device;
+this button is a last resort;
+after that (the script or the button) if it is bootloader mode
+the build script recovery method should work;
+
+
+# eee eof

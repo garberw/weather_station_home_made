@@ -1,0 +1,11 @@
+{
+    "cpu": {
+    "port":"/dev/ttyACMwc",
+    "fqbn": "adafruit:samd:adafruit_itsybitsy_m4",
+    "name": "Adafruit ItsyBitsy M4 (SAMD51)",
+    "type": "serial"
+  },
+  "secrets": [],
+  "included_libs": []
+}
+

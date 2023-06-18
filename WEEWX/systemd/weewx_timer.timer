@@ -1,0 +1,29 @@
+# systemd configuration for weewx_merge
+
+[Unit]
+Description=weewx_timer.timer
+Requires=weewx_merge.service
+
+[Timer]
+Unit=weewx_merge.service
+# way too often
+# OnUnitActiveSec=90
+OnUnitActiveSec=600
+# this is not supported in timers
+# LogLevelMax=0
+# this is not supported in timers
+# StandardOutput=null
+# OnCalendar=*-*-* *:*:00
+# remove next two lines for debugging
+# 0 = emergency
+# 1 = alert
+# 2 = critical
+# 3 = error
+# 4 = warning
+# 5 = notice
+# 6 = info and debug
+# LogLevelMax=warning
+# StandardOutput=null
+
+[Install]
+WantedBy=timers.target

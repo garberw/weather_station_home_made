@@ -1,0 +1,37 @@
+
+https://www.youtube.com/watch?v=FUAiELC76aw
+
+"Using the second (I2C 0) port on a Raspberry Pi"
+
+next line is always a software i2c bus;
+
+dtparm=i2c-gpio ... etc ...
+
+
+I believe this next line --IS-- in fact a hardware i2c bus;
+
+dtparm=i2c_vc=on
+
+pin 27 = data (SDA)
+
+pin 28 = clock (SCL)
+
+need 2 Kohm pull ups to 3.3V on both
+(WIRING:  3.3V connected to pin 27 with resistor)
+(WIRING:  3.3V connected to pin 28 with resistor)
+
+see "/boot/overlays/README" and search for "i2c_vc";
+
+NOTE:  says downside is you can not use camera;
+
+
+This says:  "I also read that you can use I2C bus 0, which is used by the OS, but that is risky."
+
+https://raspberrypi.stackexchange.com/questions/105086/pi-zero-w-second-i2c-bus
+
+recommends 4k7 resistors;
+says hardware bus on GPIO2/3 uses 1k8 resistors;
+
+
+
+# eee eof

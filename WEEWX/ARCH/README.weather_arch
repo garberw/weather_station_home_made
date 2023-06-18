@@ -1,0 +1,46 @@
+
+weatherg is short for "WeatherGreenIndoors"
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+NOTICE 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+this is totally different from weatherg on weathers server;
+
+originally;
+the intel computer was the weewx server;
+weathere was a raspi02w; outdoors;
+weatherg was a raspi02w; indoors;
+the weathere service (in weathere:~garberw) reads sensors and writes /tmp/weathere_final.dat;
+the weatherg service (in weatherg:~garberw) reads sensors and writes /tmp/weatherg_final.dat;
+the green driver in the weewx server
+copies those two .dat files to its /tmp using scp
+then reads them;
+
+until now;
+the intel computer is out of the picture;
+weatherg was the weewx server;
+weatherg was a raspi4b; indoors;
+weathere was a raspi02w; outdoors; same as before;
+the weathere service (in weathere:~garberw) reads sensors and writes /tmp/weathere_final.dat;
+the weatherg service (in weatherg:~garberw) reads sensors and writes /tmp/weatherg_final.dat;
+the indoors sensors were plugged into weatherg (which is also the weewx server) directly;
+the green driver in the weewx server
+copies the /tmp/weathere_final.dat file to its /tmp using scp;
+it already has the /tmp/weatherg_final.dat file so it doese nothing here;
+then reads them;
+
+returning to previous redundant method for frivolous and aesethetic reasons of symmetry;
+three raspis !!!!;
+weathers was the weewx server;
+weathers was a raspi4b; indoors; formerly know as weatherg; same raspi renamed;
+weathere was a raspi02w; outdoors; same as always;
+weatherg was a raspi02w; indoors; reuse original raspi02w;
+the weathere service (in weathere:~garberw) reads sensors and writes /tmp/weathere_final.dat;
+the weatherg service (in weatherg:~garberw) reads sensors and writes /tmp/weatherg_final.dat;
+the green driver in the weewx server
+copies the two /tmp/weather[eg]_final.dat files to its /tmp using scp
+then reads them;
+there are no sensors on the weewx server;
+
+# eee eof

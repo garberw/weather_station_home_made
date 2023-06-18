@@ -1,0 +1,20 @@
+
+
+# source this
+
+alias wwww='cd /root/WEEWX/'
+alias wwwwa='cd /root/WEEWX/weewx-atlas'
+alias wwwwg='cd /root/WEEWX/weewx-green'
+alias wwwww='cd /root/WEEWX/weewx-wmod'
+alias wwwws='cd /root/WEEWX/weewx-sdr'
+alias wwwwe='cd /root/WEEWX/etc_weewx'
+alias wwwwv='cd /var/lib/weewx'
+
+alias wwwwE='cd /root/WEEWX/; em'
+alias wwwwae='cd /root/WEEWX/weewx-atlas; em'
+alias wwwwge='cd /root/WEEWX/weewx-green; em'
+alias wwwwwe='cd /root/WEEWX/weewx-wmod; em'
+alias wwwwse='cd /root/WEEWX/weewx-sdr; em'
+
+
+# eee eof

@@ -1,0 +1,20 @@
+# copy this file to /etc/udev/rules.d/
+
+ACTION!="add|change", GOTO="garberw_rules_end"
+SUBSYSTEM!="usb|tty|hidraw", GOTO="garberw_rules_end"
+
+# please keep this list sorted by VID:PID
+
+ATTRS{idProduct}=="802b",ATTRS{idVendor}=="239a",ATTRS{serial}=="48D419DD5337524651202020FF01373F",MODE="664",SYMLINK+="ttyACMwc",GROUP="dialout",RUN+="/bin/stty -F /dev/ttyACMwc 115200 speed raw"
+
+ATTRS{idProduct}=="802b",ATTRS{idVendor}=="239a",ATTRS{serial}=="D87745475337524651202020FF011740",MODE="664",SYMLINK+="ttyACMwl",GROUP="dialout",RUN+="/bin/stty -F /dev/ttyACMwl 115200 speed raw"
+
+ATTRS{idProduct}=="802b",ATTRS{idVendor}=="239a",ATTRS{serial}=="7825D5F75337524651202020FF081D2E",MODE="664",SYMLINK+="ttyACMwr",GROUP="dialout",RUN+="/bin/stty -F /dev/ttyACMwr 115200 speed raw"
+
+ATTRS{idProduct}=="802b",ATTRS{idVendor}=="239a",ATTRS{serial}=="BAF5FA7D5337524651202020FF09311F",MODE="664",SYMLINK+="ttyACMww",GROUP="dialout",RUN+="/bin/stty -F /dev/ttyACMww 115200 speed raw"
+
+ATTRS{idProduct}=="802b",ATTRS{idVendor}=="239a",ATTRS{serial}=="212B4B835337524651202020FF093B3B",MODE="664",SYMLINK+="ttyACMwa",GROUP="dialout",RUN+="/bin/stty -F /dev/ttyACMwa 115200 speed raw"
+
+ATTRS{idProduct}=="802b",ATTRS{idVendor}=="239a",ATTRS{serial}=="5D9FC2885337524651202020FF09193D",MODE="664",SYMLINK+="ttyACMwg",GROUP="dialout",RUN+="/bin/stty -F /dev/ttyACMwg 115200 speed raw"
+
+LABEL="garberw_rules_end"

@@ -1,0 +1,377 @@
+
+TODO ================
+timing when usb not plugged in;
+ttyUSB; avrdude requires replug usb;
+weewx driver; json; pack; unpack (parse);
+power;
+  diodes;
+  and LoRa; check radio range;
+fixed
+rain is a pull down pin not a pull up;
+
+ver56 ===============
+updated error handling macros and added backtrace based on FUNC_BEGIN pushing
+__func__name__ on a stack in static_serial_print; changed most macros from
+ERROR_RETURN to ERROR_CONDITION which does backtrace; ERROR_CONDITION is
+for point where error would originally be raised or thrown;
+ERROR_RETURN is for returning function with subsidiary error in descendents;
+ERROR_CATCH catches any errors that have happened so far accumulated in weather_exception;
+weather_exception is reset at beginning of main loop;
+
+ver55 ===============
+
+ver54 ===============
+added two locks LOCK1 and LOCK2 for FUNC_BEGIN which turns ser_print printing on or off
+by looking up boolean value (on or off) in hash table of combinations (file + function)
+names from variables defined by compiler next pushing on/off value on a stack;
+LOCK1 is static and precomputes hash lookup based on variables on first execution
+and not thereafter; LOCK2 just gets value stored in LOCK1; avoids computing hash at run time;
+also simplified select* functions in weather_lib_wmod;
+runs but not debugged extensively;
+
+ver53 ===============
+merge wdat and sdat into wdat including both indoors and outdoors;
+pythonic index sets into wdat data table replace explicit repetitive pack and print statements;
+now all printing of weather data except diagnostics is done by weather_data class / lib;
+everything has new names supposed to be more symmetrical; more symmetrical structure;
+all drivers patched; moved compilation to electron and all loads (flash arduino)
+done by respective raspberry pi weathers (wpa; wpw;); weatherw (wpc; wpl; wpr;); weatherg (wpg);
+option in "makefile" (wg-arduino-build.sh) to compile anything given load host and usb port;
+this allows short test programs e.g. in ~/Arduino/utility_bug;
+created ~/Arduino/deprecated for old stuff;
+emacs supports makefile and "F5" "F2" and "shift F2" keys for global search and replace;
+"symmetrical" names keep deprecated separate at top of "F5" list; mark whole directory "m"
+then unmark deprecated "u" before search "F2";
+created new udev rule that automatically sets baud and "stty -F raw" obviating need for "ssss"
+alias (wg-arduino-stty.sh) script;
+figured out how to reset with button on arduino; tap it twice quickly; should turn green;
+added Adafruit watchdog timer;
+runs but not debugged extensively;
+
+ver52 ===============
+a few minor changes; runs;
+
+ver51 ===============
+reverted to version 49 then developed automatic way of creating header file
+to turn print statements on or off based on compiler "macros" (actually not
+macros) __func__ and __FILE__; stored in hash table; look up at beginning of
+each function; constructor LOCK pushes "in-use" on stack; destructor pops off
+on function exit; to make it more efficient
+(1) remove bounds check in in-use stack table lookup;
+(2) remove redundant FUNC_BEGIN which call slow load (hash table lookup);
+runs; not thoroughly debgugged; was crashing requiring reset button;
+
+ver50 ===============
+version with exception handling; never got it to work;
+believe they may simply not be supported;
+see calendar .o comments and "todo-done" log of work done in directory aa-aa;
+
+ver49 ===============
+I think it works; split atlas into atlas and green; no more compiler macros -D in
+platform_local.txt or anywhere; created weather_indoors2 library
+to copy and print iaq data to weewx; revised .emacs and ~/bin/wg-arduino-build.sh script;
+compiles on weathers; rsync's everything then uploads remotely when needed;
+
+ver48 ===============
+bme688 working with iaq and co2 for all sensors; fixed; but set delay to zero for all loop();
+
+ver47 ===============
+added support for eeprom auto calibration
+
+ver46 ===============
+factored weather_basic into weather_main; weather_satellite; weather_basic;
+renamed weather_main to weather_outside;
+renamed weather_satellite to weather_inside;
+renamed weather_basic (minus above two) to weather_util;
+this enables me to work on weather_iaq2 without taking equipment inside to flash;
+factored weather_iaq into weather_iaq1 and weather_iaq2;
+weather_iaq1 is original David Bird algorithm;
+weather_iaq2 is driver for BOSCH BSEC closed source library;
+everything compiles; runs;
+next version will install auto calibration with store to EPROM every 6 hours;
+see BOSCH example;
+
+ver41 ===============
+rtc enabled with sync from weatherb to wpa over usb serial; works;
+
+ver40 ===============
+next version will have rtc enabled with sync from weatherb to wpa over usb serial;
+
+ver39 ===============
+changed iaq from int to float
+
+ver38 ===============
+production run
+
+ver37 ===============
+updated for aht20 temperature sensors inside box; polished somewhat;
+added 6 words (12 bytes) per server to modbus messages;
+
+ver36 ===============
+implemented blocking receive with timeout; runs really fast; python timing and pattern
+scripts have perfect output; still needs to be gone over with a find-toothed comb for bugs;
+
+ver35 ===============
+runs almost entirely;
+ported from adafruit metro mini to adafruit itsy bitsy express m4 (ATSAMD51G);
+this is a 32 bit arduino; 120MHz 512KB flash 192KB ram;
+previously metro mini 16 bit arduino; 16MHz; 32KB flash; 2KB ram (that's right 2KB);
+it was suggested that at 71% ram memory use there was a possible stack overflow so I upgraded;
+rerun python modbus communication timing and pattern scripts; pattern means
+find cycles of process upstream/downstream for each sensor and client;
+possible bug due to 64k arduino read buffer size and data input buffer DATA_MAX=29
+and one of the typical modbus message lengths forming a cycle in the input buffer
+somehow but not aligned with the beginning of the message at the beginning of the buffer;
+still need to check pull up resistor on rain switch and find if read buffer is still 64 bytes;
+and change the key debounce delay time on the rain switch;
+
+ver34 ===============
+weather_station; fix program; write python script to measure and plot timing;
+there can be at most two modbus writes per cycle of client assuming
+client is slowest loop (slower than all servers per loop);
+SoftwareSerial (RS485Serial) has a circular input buffer which is
+only 64 bytes on UNO; when full it discards further input (overflow);
+to prevent overflow add delay to client loop to make it slowest;
+new main read function works using match...() functions;
+meanwhile servers (sensors) loop reading only except writing zero or one
+times per cycle of main loop; scripts in ~/arduino_LOG/timing* for
+histogram of cycle times; max is about two or three seconds so
+make main loop five second delay; scripts in ~/arduino_LOG/pattern* for
+checking communication print statement debugging output;
+------ T TEMP   CRX DATA
+------ 1 TEMP   CRX DATA
+------ 2 ERROR  ERROR
+this shows each cycle of loop() that at most (if working) two messages
+were sent and from TEMP server and "CRX DATA" means it was CRX DATA
+(client receive data reply) or CTX REQUEST (client transmit request)
+arduinos were studied for about 580 cycles and the same send/receive
+pattern happened every time; client receives server 1,2,3,1,2,3,1,2,3,...
+(wind unplugged); server cycle reads spurious messages from other servers
+before getting request addressed to itself;
+Also crashed when taken outside; radio_rx loop with 20 attempts was too short;
+increased radio_rx loop to 50 and found it succeeded after 22 attempts usually;
+maybe this caused it to get stuck never receiving; now it should always succeed
+since 50 is plenty big enough and not near 20 or a multiple thereof;
+
+ver33 ===============
+figured out timing better; rewrote main "read()" function; does not work;
+will rewrite again using Serial.readbytes() and simply scan buffer();
+
+ver32 ===============
+made "drivers" (client/server .ino files) more symmetrical with process_upstream
+and process_downstream instead of process_sensor; few ERROR_CATCH
+reduced compiled memory size; simplified bounds_checked_array_1 and removed
+bounds_checked_array_2; runs okay; added 1000 msec delay to wpi (weather_radio_rx);
+this delay makes it receive successfully each time;
+added much better print-statement debugging; added skip-leading-blanks (zeros) to
+weather_modbus read() function; added "skip blanks" to print statement debugging;
+
+ver31 ===============
+has two types of errors; normal failures and error exceptions (should not happen)
+next version should make never crash or lock up; should always recover;
+
+ver30 ===============
+has excessive use of ERROR...; everything is an ERROR not a normal failure;
+next version will have two types of errors; normal failures and error (should not happen)
+exceptions (ERROR_CATCH; ERROR_...)
+
+ver29 ===============
+removed bit_field; added bounds_checked_array; next version will attempt tab stops for
+variable printing; has bugs;
+
+ver28 ===============
+before major modifications such as bounds_checked array;
+
+ver27 ===============
+installed (long) before 8/16/22
+created weatherwm weather station and put wmod and weatherwm outside;
+first full installment; finished; now debugging in real use begins;
+crashing regularly; may be from heat;
+
+ver26 ===============
+started reading datasheets;
+back to normal but lux is all messed up;
+doing regression to get correct fit for all quantities;
+rain is done; wind will not be done;
+humidity temperature and pressure are shifted by adding a constant;
+average must equal average of atlas;
+lux and light count are multiplied by a constant; no adding;
+least squares fit to atlas; x = atlas; y = wmod;
+constant a = sum(x*y)/sum(x*x);
+
+ver25 ===============
+gave up on radiohead ask library; integrated changes for BME688 temp/humid/press sensor
+from ver24; back to <RH_RF95.h> library; included every sensor in weewx_wmod driver;
+reduced memory to make it fit on weather_radio_rx which was very full;
+now weather_radio_rx uses 71% ram; runs under weewx;
+
+ver24 ===============
+changed weather_radio_rx to a transmitter sensor weather_satellite using radiohead ask library;
+changed weather_client to transmit using radiohead ask library;
+tried to get rtl-sdr to be the receiver;
+modified driver for rtl_433 in /home/garberw/git/rtl_433/src/devices/radiohead_ask.c
+have to use rtl_433 with rtl_tcp instead of rtl-sdr sub-driver or "back end";
+rtl_tcp does same thing but reads off usb port and "publishes" it on tcp for all to read;
+only one can read usb port at a time;
+all compiles; could not even run demo for radiohead ask;
+connected miso of client to mosi of satellite and vici versa (with wires) and this worked
+but that is not so helpful; reverting to ver23;
+
+ver23 ===============
+fine tuning;
+before changing weather_radio_rx to a transmitter sensor using radiohead ask library;
+before moving weather_client to transmit using radiohead ask library;
+experimenting with using rtl-sdr as the receiver;
+modified driver for rtl_433 in /home/garberw/git/rtl_433/src/devices/radiohead_ask.c
+
+ver22 ===============
+rain server; calibrate;
+figure out max rain speed in buckets per sec;
+h = N h0;
+where h0 = BUCKET_VOLUME = 0.0375 cm/tip;  (it is a height not a volume);
+can measure at least f = 1 tips / sec;
+rain rate = h0 [cm/tip] * f [tip/sec] = 0.0375 [cm/sec]=0.375 [mm/sec] * 3600 [sec/hr] = 1350 mm/hr
+fastest recorded rate is 0.085 mm/sec = 305 mm/hr
+Another way;
+V = 500cc in 257 tips; say 257 seconds;
+A = area of rain gauge rain catcher = 51.84 cm^2;
+rain rate = (500 [cm^3] / 51.84 [cm^2]) / (257 [sec]) = 0.375 [mm/sec]
+
+ver21 ===============
+made radio buffer about half as big; now radio_rx and client fit in memory;
+
+ver20 ===============
+added timing measurements;
+note memory use very low on client 75% right on borderline;
+timing; optimize delay() statements;
+  main idea;
+    client read timeout >= (1*(time to read server sensor) + (time to transmit/receive));
+    client read timeout >= total loop time server;
+
+ver19 ===============
+updated utility_temp and utility_wind;
+send wdat.m_done as bitvector over radio;
+only done if client receives data from server;
+finished if done or count >= max_count;
+memory use low enough;
+light server; can not turn off LEDs; no way to do this other than painting them black or
+covering with tape;
+decided to debounce rain switch with longer interrupt time instead of using a capacitor;
+decided not to  replace velcro with mounting plates;
+do not need any capacitors or pull-up resistors and pull-down resistors; built in to dev board;
+need second hardware serial port; share Serial on pins 0,1;
+note that wind minimum reading is 0.5 meters/sec which is not that sensitive;
+need a strong fan to test;
+no obvious problem with boot of temp sensor;
+usb plugged in but not wall transformer; need to use diodes;
+
+ver18 ===============
+get wind working; create utility_wind; set baud of wind to 9600;
+make current measuring barrel jack device;
+measure current with meter; 85 mA at 12 V without temp fan; 200 mA at 12 V with temp fan;
+radio only makes small blip on ammeter;
+
+ver17 ===============
+print statement debugging; turn on or off within program; silent mode;
+compiles; runs all sensors; radio working;
+added toggle for print statement debugging
+improved weather_excpetion;
+both use bit_field class;
+debounce rain gauge switch using Lady Ada's switch tutorial;
+increase debounce delay; works okay;
+why not make it really large;
+note; often when boot fails you have to replug the usb cable;
+does not halts boot if usb not connected; while (!Serial); adafruit radio docs have comment;
+  adafruit comment included in setup function in all code;
+  unplug all usb; replug power; plug in radio_rx; you __DO__ get a signal; even temperature;
+decide not to optimize radio broadcasts and power output since we are using wall power;
+perma-proto boards; velcro; check if it causes static electricity; no not really;
+
+ver16 ===============
+compiles; runs all sensors; radio working;
+made option to give up after about 5 tries;
+temperature bug was swapped bytes;
+using arduino-cli; problem with ttyUSBxx and stty (and avrdude ????);
+reason it fits in memory is probably conversion
+of all strings to format_string (F("example"))
+not rewrite of program stupidly !!!!;
+
+ver15 ===============
+compiles
+runs most sensors but not temperature;
+radio fixed;
+next version will try arduino-cli (command line interface);
+
+ver14 ===============
+compiles
+somewhat runs
+
+ver13 ===============
+made client and all programs fit in memory;
+then did a big edit to get radio working;
+moved most stuff to libraries;
+created radio library;
+does not compile yet;
+
+ver12 ===============
+get sensors working concurrently;
+no real understanding of how this works;
+(one times time to read server sensor plus
+time to send/receive) should be timeout for read on client;
+light is slower and has several missed frames;
+next version;
+hopefully debounce rain gauge switch using Lady Ada's
+switch tutorial and or a capacitor;
+get one at electronics plus in San Rafael;
+running very low on ram (not flash) on light server; fix this;
+idea behind timing;
+check for timing when not plugged in to serial usb ports;
+calibrate rain gauge;
+
+ver11 ===============
+Juan Bester http://www.zihatec.de SimpleModbusSlave;
+SimpleModbusSlave frame buffer and timing idea fixed program;
+Also do not print to serial when using other software serial port;
+next version get sensors working concurrently;
+fully working for each sensor separately;
+set tr (timeout read) not T15 or T35 to zero
+for each sensor server;
+servers miss a lot of messages from client;
+probably min tr to set for client is twice average
+loop time for server (with server tr (timeout read) = 0);
+tr for client has been set to low values;
+must account for time for server to perform computation
+or sensor measurement e.g. light is a bit slow
+about 1500 milliseconds including modbus read/write;
+
+ver10 ===============
+copied SimpleModbusSlave;
+does not compile;
+decided was unnecessary complication;
+will just use proper timing introduced by that program;
+
+ver09 ===============
+uses interrupts;
+rain not communicating over modbus;
+others okay;
+
+ver08 ===============
+rain working except for communicating with client;
+next version hopefully will use interrupts;
+otherwise as-is we have to divide main loop time
+into mostly polling pin 2 for button presses
+(bucket tips) unless a request is pending;
+
+ver07 ===============
+new combined read/write and write/read functions;
+wait on "available" for read;
+working intermittently when set delay to 1000 msec;
+syncs every time when starting;
+does not sync (read fails) every other time after about five minutes;
+
+ver06 ===============
+new combined read/write and write/read functions;
+not working;
+
+
+# eee eof

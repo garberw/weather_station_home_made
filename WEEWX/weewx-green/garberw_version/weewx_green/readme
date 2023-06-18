@@ -1,0 +1,106 @@
+weewx_green
+Copyright 2022-2028 William Garber
+Copyright 2014-2020 Matthew Wall
+Copyright 2014 Nate Bargmann <n0nb@n0nb.us>
+See the file license for your rights.
+Credit to and contributions from:
+  Jay Nugent (WB8TKL) and KRK6 for weather-2.kr6k-V2.1
+    http://server1.nuge.com/~weather/
+  Steve (sesykes71) for testing the first implementations of this driver
+  Garret Power for improved decoding and proper handling of negative values
+  Chris Thompstone for testing the fast-read implementation
+
+This is a driver for weewx that captures data from the green weather station.
+It is very similar to the original /home/weewx/bin/weewx/drivers/ultimeter.py
+which is for Peet Brothers weather stations.
+It simply reads a usb serial port which can be configured and it
+discards all data except lines beginning with "!!" and ending with
+some combination of '\r' and '\n'.
+The binary format of this line is documented in the source code and
+is compatible with the green weather station.
+
+===============================================================================
+Hardware
+
+The green weather station is a custom home-made hobby creation.
+
+===============================================================================
+Installation
+
+0) install pre-requisites
+
+install weewx
+    http://weewx.com/docs.html
+
+1) download the driver
+
+wget -O weewx_green_master.tar.gz (fixme wrong address) https://github.com/garberw/weewx_green/archive/master.tar.gz
+
+2) install the driver
+
+sudo wee_extension --install weewx_green_master.tar.gz
+
+3) configure the driver
+
+sudo wee_config --reconfigure --driver=user.weewx_green --no-prompt
+
+4) run the driver directly to identify the packets you want to capture
+
+cd /home/weewx
+sudo PYTHONPATH=bin python bin/user/weewx_green.py 
+
+5) modify weewx.conf using a text editor
+
+see Configuration section below.
+    
+6) start weewx
+
+sudo /etc/init.d/weewx start
+
+
+===============================================================================
+How to run the driver directly
+
+Run the driver directly for testing and diagnostics.  For example, if weewx
+was installed using setup.py:
+
+cd /home/weewx
+sudo PYTHONPATH=bin python bin/user/weewx_green.py --help
+sudo PYTHONPATH=bin python bin/user/weewx_green.py --port=/dev/ttyUSB0
+
+If weewx was installed from deb or rpm:
+
+sudo PYTHONPATH=/usr/share/weewx python /usr/share/weewx/user/weewx_green.py --help
+sudo PYTHONPATH=/usr/share/weewx python /usr/share/weewx/user/weewx_green.py --port=/dev/ttyUSB0
+
+===============================================================================
+Configuration
+
+# main section Station
+[Station]
+    station_type = WeatherModbus
+
+# add main section directly following [Station] section
+[WeatherModbus]
+    # you can assign a fixed port to USB device using udev; see below;
+    port = /dev/ttyUSB0
+    # time in seconds between LOOP packets.
+    poll_interval = 2.5
+    path = /var/tmp/weewx_green_data
+    # path relative to WEEWX_ROOT
+    # /home/weewx/bin/user/weewx_green.py
+
+
+===============================================================================
+
+How to diagnose problems
+
+
+===============================================================================
+Environment
+
+
+===============================================================================
+
+Support for new sensors
+

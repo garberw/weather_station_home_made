@@ -1,0 +1,321 @@
+0.87 21jan2021
+* added support for Acurite515 refrigerator/freezer sensors
+* added support for LaCross LTV-R3 rain sensor thanks to srhuston (#145)
+
+0.86 11jan2021
+* fixed typo in factor for THPacket (thanks gjr80)
+
+0.85 30dec2021
+* fixed shutdown - use is_alive instead of isAlive to keep python 3.9 happy
+* eliminate stderr memory leak
+* report failures on startup (rtl_433 still uses incorrect stdout/stderr)
+* added support for Acurite-3n1 thanks to zenon2cubed
+* added time threshhold to distinguish nearly duplicate packets
+* added support for Auriol HG02832 thanks to dinoj-bg MR140
+* support both metric and us in AcuriteAtlas packets thanks to ka6sox MR142
+
+0.84 19dec2021
+* added 'model' field
+* added option log_lines to assist in new sensor detection
+* added config option to specify sensor_map for direct invocation
+
+0.83 26oct2021
+* fix hideki wind/rain identifiers
+* fix bresser 6in1 indentation
+* use introspection for packet listing - packet must have IDENTIFIER
+* provide more feedback when listing recognized packet types
+* update identifier and fields for Acurite 606TX
+
+0.82 26oct2021
+* huge thanks to andylittle for rolling up many changes while i was unavailable
+* add LaCrosse TX18 sensor thanks to jmpacquet MR82
+* added FOWH65BAltPacket thanks to jdormansteel MR84
+* added support for OS BTHR918 thanks to billatq MR136
+* added support for Bresser Professional Rain Gauge thanks to kroeckx MR122
+* added support for Bresser 6in1 thanks to joewilliamsca MR107
+* added support for LaCross BreezePro thanks to CazYokoyama MR102
+* added support for Atlas Lightning Detector thanks to jrhelbert MR89
+* update definition for Acurite00275RM thanks to Topslakr MR124
+* update OSUVR128 packet identifier thanks to danimaciasperea MR130
+* added support for wh24/wh25 variant thanks to sagu23 MR93
+* added battery and more wind mappings for Bresser-5in1 thanks to millallo MR85
+* update FOWH65B mappings thanks to vittorio88 MR92
+* added PrologueTH thanks to stephen-hocking
+* fixed battery indicator for OSBTHGN129 and recent rtl_433 thanks sbsrouteur
+* support for latest rtl_433 hideki wind speeds
+
+0.81 01jul2021
+* add WH31L thanks to MksRasp #133
+
+0.80 03mar2021
+* add inFactory-TH temp humidity sensor thanks to gleven #117
+
+0.79 15jan2021
+* update LaCrosse-TX141THBv2 to the new style SDR. thanks to Mario St-Gelais
+* update identifier for Acurite-986
+* update Oregon-PCR800 to the new style SDR. thanks to luchmhor #94
+* remove ussb1 from Acurite-6045M. thanks to rct/n7qnm #81
+* add support for WS2032. rain may not be correct. thanks to raadi...@gmail.com
+* update identifier for Acurite-6045M to the new style SDR.
+* update identifier for Fineoffset-WHx080 to the new style SDR. thanks to W11T #97
+* update identifier for HIDEKI-TS04 to the new style SDR.
+* update a few parse json battery_ok
+
+0.78 06jun2020
+* updated packet formats for Oregon Scientific WMR100N. -tk
+* corrected wind speed for Acurite5n1PacketV2. -tk
+
+0.77 06feb2020
+* revert the rtl_433 to rtl changes
+* update identifier for Ambient Weather F007TH
+* added support for fine offset rain gauge (rtl_433 calls it EcoWitt-WH40)
+* deal with more changes to acurite 5n1 packet format from rtl_433
+
+0.76 04feb2020
+* use rtl instead of rtl_433 to match rtl_433 project change
+* stop using -G in default command, since it is now officially just for testing
+* encourage use of -R instead of -G, as requested by rtl_433 project
+
+0.75 02jan2020
+* fixed unit system bug in OSWGR800 packet.  thanks to user olivier!
+
+0.74 22dec19
+* added support for TS-FT002.  thanks to user splobsterman!
+
+0.73 14dec19
+* added support for acurite atlas packets.  thanks to user Chris Morris!
+
+0.72 02dec19
+* added support for TFATwinPlus303049.  thanks to user weezul!
+* added support for acurite rain 899.  thanks to user rknobbe!
+* convert units for rain in fine offset 1080/3080 packets
+
+0.71 01dec19
+* added support for HolmanWS5029. thanks to user rmounce!
+* changed labels for pm10 from pm10_ug_m3 to pm10_0_ug_m3
+* added support for rain_mm, wind_speed_mph, wind_direction, wind_gust in
+   Hideki rain and wind packets.  thanks to user giuseppe saia/farmabeps,
+   and user andylittle.  fixes issue #67
+* change acurite 986 parse text to match parse json.  thanks to andylittle!
+* added support for OSUVR128.  thanks to user sirrated!
+* added support for unsupported acurite tower and 5in1 packets that include
+   rssi, frequency, and snr.  thanks to user networkname!  issue #59
+* added support for FOWH5 sensors.  thanks to user starvald!  issue #65
+
+0.70 27aug19
+* ported to Python 3
+
+0.64 01may19
+* added support for OS THR128. thanks to user douglassd!
+
+0.63 23apr19
+* added support for WT0124 pool sensor
+
+0.62 08apr19
+* added support for WH32B sensor.  thanks to user steepleian!
+
+0.61 11mar19
+* fix packet name for WH31E
+
+0.60 06mar19
+* deal with rtl_433 output changes to OSBHTR968 packets
+
+0.59 03mar19
+* report packet that resulted in unmapped lines.  thanks to user wjcarpenter!
+* provide better feedback when rtl_433 not found
+* formatting changes to keep PEP happy
+
+0.58 15feb19
+* added support for OSRGR968 and OSTHGR968 packets.  thanks to user chaoschris!
+* fixed improper invocation of get_int for WH31 sensor
+
+0.57 14feb19
+* support the WH31 sensor.  thanks to user phinnay!
+
+0.56 14feb19
+* remove the light_lux multiplier.  if you can to convert to radiation, do it
+  using StdWXCalculate, and beware that there is no way to properly convert
+  lux to solar radiation
+
+0.55 10feb19
+* added support for fine offset WH24 sensors
+
+0.54 22jan19
+* fixed typo in acurite 5n1 parsing
+
+0.53 20jan19
+* added support for Alecto rain packets.  thanks Roberto Verrelli!
+
+0.52 20jan19
+* adjust parsing for Bresser 5n1 to deal with different json formats
+
+0.51 20jan19
+* added support for AlectoV1 wind packets.  thanks Roberto Verrelli!
+* added support for Springfied temperature/moisture sensors
+
+0.50 03jan19
+* attempt to deal with the ever-chaning acurite5n1 packet labels
+
+0.49 30dec18
+* added support for bresser 5in1 (thanks to user mercurystorm)
+
+0.48 20dec18
+* added support for WH25 battery bit (thanks to StephenRO)
+* added support for FOWH65B (ambient WS2902A) (thanks to StephenRO)
+* ensure that sensor_id is rendered as a string (issue #32 by user dbrb2)
+
+0.47 25sep18
+* rtl_433 now emits 'pressure_hPa' not 'pressure' for FOWH25 packets
+
+0.46 31aug18
+* added json support for PCR800. thanks to andylittle
+* added json support for wgr800 and rain pcr800.  thanks to linda eriksson!
+* added support for humidity in Nexus.  thanks to gazza (gary)!
+
+0.45 29aug18
+* added support for AlectoV1Packets (Ventus W044 thermo/hydro).  thanks Adam!
+* added support for FOWH2Packets.  thanks to Adam Sjogren!
+
+0.44 21jul18
+* output from rtl_433 continues to be a moving target
+
+0.43 21jul18
+* fix battery status for acurite tower packets
+* fix battery status for acurite lightning packets
+
+0.42 06jul18
+* fix units for FOWH1080Packet - m/s and mm not kph and cm.  thanks millallo!
+
+0.41 06jul18
+* added support for acurite 986 json format
+* try to make some acurite packet identifiers more robust
+
+0.40 06jul18
+* deal with acurite 5in1 changes in rtl_433.  thanks to user andylittle!
+* deal with acurite lightning sensor changes in rtl_433.  thanks to mlfreeman2!
+* added support for Nexus temperature sensor.  thanks to user vg8020!
+
+0.39 01jan17
+* deal with change from wind_speed to wind_speed_mph for rtl433 parsing of 5in1
+
+0.38 10dec17
+* hardware_name is a property
+
+0.37 01nov17
+* deal with more changes to field names from rtl_433 for wh1080/wh3080
+
+0.36 18sep17
+* do not use id as a packet dictionary key
+
+0.35 15sep17
+* fix sensor id for acurite WT450
+
+0.34 15sep17
+* added support for acurite WT450 rain sensor
+
+0.33 09aug17
+* fix bogus whitespace from kk6fut pull request
+
+0.32 04aug17
+* deal with fine offset wh3080 output from different rtl_433 versions
+
+0.31 03aug2017
+* added support for THN802 and BTHGN129.  thanks to dartvader85!
+
+0.30 20jul2017
+* added support for lacrosse tx sensor.  thanks to kk6fut!
+
+0.29 17may2017
+* fixed non-ascii character in the comments
+
+0.28 16may2017
+* added support for fine offset wh3080 packets
+
+0.27 11apr2017
+* added support for oregon scientific BTHR968.  thanks to Art Greenberg!
+
+0.26 02apr2017
+* added support for fine offset wh25 packets.  thanks to John Voss!
+
+0.25 20mar2017
+* added support for acurite 606TX sensors.  thanks to Karl Kremer!
+
+0.24 19mar2017
+* deal with rtl_433 changes to acurite lightning sensor
+* added support for prologue sensors.  thanks to user Karl Kremer!
+
+0.23 09mar2017
+* added support for acurite 00275RM
+
+0.22 16feb2017
+* deal with hex message types in acurite lightning packets
+
+0.21 30jan2017
+* added support for oregon scientific UVN800
+
+0.20 21jan2017
+* added parsing for ambient F007TH sensors
+
+0.19 20jan2017
+* fix sign on rubicson temperature sensor parser
+* fix sign on acurite 968 packet parser
+* fix sign on acurite lightning packet parser
+
+0.18 18jan2017
+* consolidate oregon scientific identifiers
+
+0.17 17jan2017
+* added json support for Rubicson temperature sensor
+
+0.16 16jan2017
+* added support for Rubicson temperature sensor
+* ensure hex identifiers for acurite sensors
+* just kill the rtl_433 process instead of trying to terminate it
+
+0.15 15jan2017
+* default to json format (-F json)
+* json support for acurite 5-in-1 sensors
+* added support for hideki wind and rain packets
+* added support for lacrosse TX141TH-Bv2 packets
+* default to loading all rtl decoders (-G)
+
+0.14 12jan2017
+* provide more feedback during shutdown for debugging
+* attempt to do better shutdown of rtl_433 process
+* fixed bug in delta reporting log message
+
+0.13 11jan2017
+* deal with changes to acurite decoder in rtl-433 - use json now
+
+0.12 03nov2016
+* added option to enumerate supported sensors
+* added support for OS WGR800 and PCR800 sensors
+* added support for lacrosse rainfall messages
+* provide feedback when no permission to read usb device
+* added support for Calibeur RF104 sensors
+* added support for acurite lightning sensor
+* handle negative temperatures
+* added experimental support for json format
+
+0.11 31oct2016
+* added parser for acurite 986 packets (thanks to andy)
+* removed vestigial code from data_type
+* use glob matching for sensor identifier tuple components
+
+0.9 29sep2016
+* added generic support for rain_total and other cumulative measures
+* for acurite 5n1, get rain from type 31 message instead of reset message
+
+0.8 25sep2016
+* added support for OSTHGR122NPacket (thanks to marco tibaldi)
+
+0.7 12sep2016
+* improved process management
+* report errors better during startup
+* use new mapping syntax output=input
+* added comments about how to configure
+* options to log unparsed packets
+* options to log unmapped data from parsed packets
+
+0.1 30mar2016
+* initial release

@@ -1,0 +1,365 @@
+#!/usr/bin/env python3
+#
+# SPDX-FileCopyrightText: 2021 ladyada for Adafruit Industries
+# SPDX-License-Identifier: MIT
+"""
+Weatherg server
+open USB_SERIAL_PORT which is wpw arduino which usually equals /dev/ttyACMwg;
+try to reopen USB_SERIAL_PORT if it ever gets closed;
+infinite loop of iterations;
+try to recover from all exceptions but halt();
+iteration reads line from USB_SERIAL_PORT;
+if line does not begin with ARDUINO_DATA_SENTINEL it is echoed to stdout;
+if line does     begin with ARDUINO_DATA_SENTINEL it is
+(1) echoed to stdout;
+(2) parsed;
+(3) written to FNAME_STAGE as 8 byte binary doubles; None values are written as --------;
+(4) FNAME_STAGE is moved to FNAME_FINAL; move is atomic and cannot be interrupted;
+parser recognizes json dict which must at least include ARDUINO_DATA_KEYS;
+"""
+
+import signal
+import argparse
+import time
+import shutil
+import sys
+import struct
+import json
+import logging
+import logging.handlers
+import pathlib
+import serial
+
+log = logging.getLogger(__name__)
+
+SERVICE_VERSION = 0.01
+DEFAULT_DEBUG = False  # tofix
+FNAME_STAGE = '/tmp/weatherg_stage.dat'
+FNAME_FINAL = '/tmp/weatherg_final.dat'
+# MAIN_LOOP_SLEEP = 5  # seconds
+MAIN_LOOP_SLEEP = 1  # seconds
+USB_SERIAL_PORT = '/dev/ttyACMwg'
+USB_SERIAL_TIMEOUT = 10
+ARDUINO_DATA_SENTINEL = '{'
+#ARDUINO_DATA_KEYS = [ 'inTemp',           # Celsius
+#                      'inHumidity',       # % Relative Humidity
+#                      'pressure',         # Pa not hPa
+#                      'gas_resistance',   # Ohm not kOhm
+#                      'iaq',              # IQA (unitless)
+#                      'altitude',         # meter not ft
+#                      'co2',              # ppm
+#                     ]
+ARDUINO_DATA_KEYS = [ 'inTemp',           # Fahrenheit
+                      'inHumidity',       # % Relative Humidity
+                      'pressure',         # inHg
+                      'gas_resistance',   # kOhm
+                      'iaq',              # IQA (unitless)
+                      'co2',              # ppm
+                      'ex_altitude',      # ft
+                      'ex_acc_iaq',       # calibration finished iaq when == 3.0
+                     ]
+
+
+def halt(msg, exc):
+    """halt run"""
+    log.error('halting msg = %s exc = %s', msg, str(exc))
+    # log.error('flushing buffers')
+    sys.exit(0)
+
+
+class WeathergError(Exception):
+    """raised by Weatherg"""
+
+    def __init__(self, msg):
+        self.msg = msg
+        super().__init__()
+
+    def __str__(self):
+        return self.msg + ' base ' + super().__str__()
+
+
+class Weatherg:
+    """
+    Init and run adafruit_bme680_modified sensor
+    read line from USB_SERIAL_PORT
+    log line
+    if line is json:
+        parse
+        write results to binary file FNAME_STAGE
+        system('mv FNAME_STAGE FNAME_FINAL') which is atomic
+    """
+
+    def __init__(self):
+        """open USB_SERIAL_PORT for first time"""
+        self.ser_arduino = serial.Serial()
+        self.ser_arduino.port     = USB_SERIAL_PORT
+        self.ser_arduino.baudrate = 115200
+        self.ser_arduino.bytesize = 8
+        self.ser_arduino.parity   = 'N'
+        self.ser_arduino.stopbits = 1
+        self.ser_arduino.timeout  = USB_SERIAL_TIMEOUT
+        self.ser_arduino.xonxoff  = 0
+        self.ser_arduino.rtscts   = 0
+        self.reopen_ser_arduino()
+
+    def __del__(self):
+        """close USB_SERIAL_PORT"""
+        self.ser_arduino.close()
+
+    def reopen_ser_arduino(self):
+        """test if USB_SERIAL_PORT is open already;  if not then reopen it;"""
+        if self.ser_arduino.is_open:
+            return
+        try:
+            self.ser_arduino.open()
+            log.debug('reopen_ser_arduino; success; USB_SERIAL_PORT=%s', USB_SERIAL_PORT)
+        except ValueError as exc:
+            halt('reopen_ser_arduino; ValueError; bad parameter; fatal;', exc)
+        except serial.SerialException as exc:
+            msg = 'reopen_ser_arduino; SerialException; device not found or fail to configure;'
+            raise WeathergError(msg) from exc
+
+    def parse_data1(self, line):
+        """
+        parse and validate data line
+        (1) valid json
+        (2) dict of float or None
+        (3) ARDUINO_DATA_KEYS must be subset of keys
+        """
+        try:
+            parsed_dict = json.loads(line)
+        except Exception as exc:
+            raise WeathergError('parse_data; decode error') from exc
+        if not isinstance(parsed_dict, dict):
+            raise WeathergError('not dict')
+        double_frame = []
+        pdkeys = parsed_dict.keys()
+        for key in ARDUINO_DATA_KEYS:
+            if key in pdkeys:
+                val0 = parsed_dict[key]
+                try:
+                    val = float(val0)
+                except ValueError as exc:
+                    msg = f'parse_data non numeric key={key} val={val0}'
+                    raise WeathergError(msg) from exc
+                log.debug('parse_data; writing key = %-20s val = %22.10f', key, val)
+            else:
+                val = None
+                log.debug('parse_data; missing key = %-20s val = %22.10f', key, val)
+            double_frame.append(val)
+        return double_frame
+
+    def parse_data(self, line):
+        """
+        parse and validate data line
+        (1) valid json
+        (2) dict of float or None
+        (3) ARDUINO_DATA_KEYS must be subset of keys
+        """
+        try:
+            parsed_dict = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise WeathergError('parse_data; json decode error') from exc
+        if not isinstance(parsed_dict, dict):
+            raise WeathergError('not dict')
+        # inTemp_F is intermediary format generated by arduino used directly by Atlas driver
+        # if 'inTemp_F' in parsed_dict.keys():
+        #    parsed_dict['inTemp'] = parsed_dict['inTemp_F']
+        #    del parsed_dict['inTemp_F']
+        if 'aaa_millis' in parsed_dict.keys():
+            aaa_millis = parsed_dict['aaa_millis']
+            log.debug('aaa_millis = %d', aaa_millis)
+            del parsed_dict['aaa_millis']
+        double_dict = dict()
+        pdkeys = parsed_dict.keys()
+        for key in ARDUINO_DATA_KEYS:
+            if key in pdkeys:
+                val0 = parsed_dict[key]
+                try:
+                    val = float(val0)
+                except ValueError as exc:
+                    msg = f'parse_data non numeric key={key} val={val0}'
+                    raise WeathergError(msg) from exc
+                log.debug('parse_data; writing key = %-20s val = %22.10f', key, val)
+            else:
+                val = None
+                log.debug('parse_data; missing key = %-20s val = %22.10f', key, val)
+            double_dict[key] = val
+        return double_dict
+
+    # <   means little endian byte order
+    # c   means char
+    # f   means float;  four  bytes;
+    # d   means double; eight bytes;
+    # %d  means substitute nnn e.g. number of items e.g. '<1d' or '<8c'
+    # pack('<%dd' % num_doubles, *array_of_doubles)
+
+    def write_file1(self, double_frame):
+        """
+        make list of numerical value (parsed_dict[key]) for each key in ARDUINO_DATA_KEYS
+        in same order as ARDUINO_DATA_KEYS;
+        open FNAME_STAGE and call write_stage_d for each numerical value;
+        move FNAME_STAGE to FNAME_FINAL;
+        move is an atomic function (it cannot be interrupted);
+        """
+        try:
+            log.debug('len(double_frame)=%d', len(double_frame))
+            # if FNAME_STAGE in /tmp is owned by other than root
+            # then open for write will fail due to
+            # sysctl -a | grep fs.protected_regular
+            # see https://bbs.archlinux.org/viewtopic.php?id=251217
+            pathlib.Path(FNAME_STAGE).unlink(missing_ok = True)
+            with open(FNAME_STAGE, 'wb') as fp_stage:
+                for idx, ddd in enumerate(double_frame):
+                    # if value is None write 8 dashes
+                    if ddd:
+                        ppp = struct.pack('d', ddd)
+                    else:
+                        ppp = b'--------'
+                    log.debug('%5d %22.10f %s', idx, ddd, ppp)
+                    fp_stage.write(ppp)
+            log.debug('write_file; success:')
+        except struct.error as exc:
+            halt('write_file; fatal; struct.error; pack;', exc)
+        except ValueError as exc:
+            halt('write_file; fatal; ValueError;', exc)
+        except (OSError, EOFError) as exc:
+            halt('write_file; fatal; open or write failed;', exc)
+
+    def write_file(self, double_dict):
+        """
+        open FNAME_STAGE and write double_dict;
+        move FNAME_STAGE to FNAME_FINAL;
+        move is an atomic function (it cannot be interrupted);
+        """
+        try:
+            log.debug('len(double_dict)= %d', len(double_dict))
+            # file no longer binary
+            # if FNAME_STAGE in /tmp is owned by other than root
+            # then open for write will fail due to
+            # sysctl -a | grep fs.protected_regular
+            # see https://bbs.archlinux.org/viewtopic.php?id=251217
+            pathlib.Path(FNAME_STAGE).unlink(missing_ok = True)
+            with open(FNAME_STAGE, 'w') as fp_stage:
+                outstr = json.dumps(double_dict)
+                fp_stage.write(f'{outstr}\n')
+                log.debug('wrote double_dict = %s', str(double_dict))
+            log.debug('write_file; success:')
+        except ValueError as exc:
+            halt('write_file; fatal; ValueError;', exc)
+        except (OSError, EOFError) as exc:
+            halt('write_file; fatal; open or write failed;', exc)
+
+    def move_file(self):
+        """system('mv FNAME_STAGE FNAME_FINAL')"""
+        try:
+            shutil.move(FNAME_STAGE, FNAME_FINAL)
+            log.debug('move_file; success:')
+        except OSError as exc:
+            halt('move_file; fatal; check permissions;', exc)
+
+    def read_line(self):
+        """read a single line from USB_SERIAL_PORT and catch any possible errors"""
+        try:
+            line = self.ser_arduino.readline()
+        except IOError as exc:
+            raise WeathergError('read_line; Serial IOError;') from exc
+        line = line.decode('ascii')
+        line = line.rstrip()
+        return line
+
+    def iteration(self):
+        """
+        read line from USB_SERIAL_PORT
+        log(line)
+        if line begins with ARDUINO_DATA_SENTINEL:
+            parse json
+            write FNAME_STAGE
+            mv FNAME_STAGE FNAME_FINAL
+        """
+        self.reopen_ser_arduino()
+        line = self.read_line()
+        log.debug('line = %s', line)
+        len_min = min(len(line), len(ARDUINO_DATA_SENTINEL))
+        if line[0:len_min] == ARDUINO_DATA_SENTINEL:
+            log.debug('iteration found ARDUINO_DATA_SENTINEL')
+            # double_frame = self.parse_data1(line)
+            # self.write_file1(double_frame)
+            double_dict = self.parse_data(line)
+            self.write_file(double_dict)
+            self.move_file()
+            time.sleep(MAIN_LOOP_SLEEP)
+
+    def run(self):
+        """
+        infinite loop of iteration()
+        try to catch all exceptions unless halt()
+        """
+        while True:
+            try:
+                self.iteration()
+            except WeathergError as exc:
+                log.error(str(exc))
+
+
+def process_options():
+    """
+    parse command args
+    """
+    usage = """weatherg [--debug] [--help] [--version]"""
+    log.info('argparse.ArgumentParser')
+    parser = argparse.ArgumentParser(description=usage)
+    parser.add_argument('--version',
+                        dest='version',
+                        action='store_true',
+                        help='display service version')
+    parser.add_argument('--debug',
+                        dest='debug',
+                        default=DEFAULT_DEBUG,
+                        action='store_true',
+                        help='display diagnostic information while running')
+
+    log.info('parser.parse_args')
+    options = parser.parse_args()
+
+    if options.version:
+        log.info('weatherg version = ', SERVICE_VERSION)
+        sys.exit(1)
+
+    if options.debug:
+        log.info('log.setLevel(logging.DEBUG)')
+        log.setLevel(logging.DEBUG)
+    return options
+
+
+
+def main():
+    """options; signal handling; run service;"""
+    # signal handling;
+    # in case needed later;
+    def testing_handle_interrupt(signum, stack):
+        """catch keyboard interrupts; clean up;"""
+        log.error('Handling interrupt.')
+        log.error('signum = %d', signum)
+        log.error('stack = %s', str(stack))
+        log.error('exiting.')
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, testing_handle_interrupt)
+    signal.signal(signal.SIGINT, testing_handle_interrupt)
+
+    log.addHandler(logging.StreamHandler(sys.stdout))
+    log.addHandler(logging.handlers.SysLogHandler(address='/dev/log'))
+    print('log.setLevel INFO')
+    log.setLevel(logging.INFO)
+
+    process_options()
+
+    weatherg = Weatherg()
+    weatherg.run()
+
+
+if __name__ == '__main__':
+    main()
+
+# eee eof

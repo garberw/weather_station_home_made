@@ -1,0 +1,26 @@
+
+weathere is short for "WeatherGreenOutdoor"
+
+ver00
+still trying to get minimalmodbus to work.
+raspi_temp with homemade modbus code from wmod (arduino weather station) works great.
+
+ver01
+neatened it up.
+
+ver02
+added rain code with interrupts.  works.
+
+ver03
+
+ver04
+worried by failure; was loose wire; was getting exactly six bad chars before each reply;
+minor changes.  rewrote client_tx_rx (request_reply).
+
+ver05
+working; next version will start on weewx driver server;
+
+ver06
+first draft of driver for weewx;
+
+# eee eof
